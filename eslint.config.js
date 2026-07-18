@@ -57,14 +57,19 @@ export default tseslint.config(
     },
   },
 
-  // JSX-aware rules for the React client.
+  // React rules for the client.
   //
   // Accessibility is a must-check on every frontend PR (REVIEWER.md §6), which
   // is only enforceable if a linter checks it — so jsx-a11y lands here with the
-  // very first component rather than after a backlog of markup has accumulated.
+  // very first component rather than after a pile of markup has accumulated.
   // react-hooks catches the rules-of-hooks violations TypeScript cannot see.
+  //
+  // Covers .ts as well as .tsx on purpose: custom hooks live in plain .ts under
+  // features/ (PROJECT_STRUCTURE.md §3), and that is exactly where a
+  // conditionally-called hook hides. jsx-a11y is inert on files without JSX, so
+  // widening the glob costs nothing.
   {
-    files: ['frontend/**/*.tsx'],
+    files: ['frontend/**/*.{ts,tsx}'],
     plugins: {
       'jsx-a11y': jsxA11y,
       'react-hooks': reactHooks,

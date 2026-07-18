@@ -26,14 +26,33 @@ jobs:
         # The base compose file references every variable without a default, so
         # this step is what proves .env.example is complete and usable as-is.
         #
-        # Exporting it into the job environment as well means every assertion
-        # below addresses the same credentials and ports the stack was booted
-        # with. Hardcoding them here would let .env.example change a port and
-        # leave CI quietly testing the old one.
+        # The assertions below read their ports and identifiers from .env rather
+        # than hardcoding them, so changing a port in .env.example cannot leave
+        # CI quietly testing the old one.
+        #
+        # Only the keys the assertions actually use are promoted, and never a
+        # credential: dumping .env wholesale would make every future secret
+        # (JWT_SECRET from E1 onward) a job-wide env var visible to every later
+        # step. POSTGRES_PASSWORD is not needed at all — psql runs via
+        # `compose exec` as the container's own superuser.
         run: |
           set -euo pipefail
           cp .env.example .env
-          grep -Ev '^\s*(#|$)' .env >> "$GITHUB_ENV"
+          for key in POSTGRES_USER POSTGRES_DB BACKEND_PORT FRONTEND_PORT \
+                     MAILPIT_UI_PORT MAILPIT_SMTP_PORT; do
+            # Strip any inline comment and surrounding whitespace: an unstripped
+            # value would corrupt $GITHUB_ENV rather than fail visibly.
+            value=$(grep -E "^${key}=" .env | tail -n1 | cut -d= -f2- \
+              | sed -e 's/[[:space:]]*#.*$//' -e 's/[[:space:]]*$//' | tr -d '\r')
+            # Every key here is a port or a bare identifier. Anything else means
+            # .env.example grew a quoted, spaced or multi-line value that this
+            # extraction would silently truncate — fail loudly instead.
+            if ! printf '%s' "$value" | grep -qE '^[A-Za-z0-9_-]+$'; then
+              echo "::error::${key} is missing from .env.example or is not a plain value: '${value}'"
+              exit 1
+            fi
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
