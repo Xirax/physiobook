@@ -8,7 +8,7 @@
 
 The reviewer's job is to protect the four project goals: **full test coverage, automated CI/CD, tests-from-day-one, and correctness under concurrency.** A PR that adds a feature but weakens any of these is **rejected**, however good the feature.
 
-Review the diff against its **backlog ticket** — the ticket's acceptance criteria and test cases are the spec. If the PR doesn't reference a ticket, request one.
+Review the diff against **its ticket's acceptance criteria and test cases** — those are the spec, not the reviewer's own taste. There is no backlog file to look them up in, so the PR description (and the commit message, which restates them) must carry them. If a PR states no acceptance criteria, request them before reviewing: without them there is nothing to review against.
 
 ---
 
