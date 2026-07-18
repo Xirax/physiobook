@@ -1,0 +1,106 @@
+# PhysioBook — local development overlay.
+#
+# Compose loads this file automatically alongside docker-compose.yml, so plain
+# `docker compose up` gives you the dev stack. Nothing here should be needed to
+# run the app correctly — it only trades production fidelity for fast feedback:
+#
+#   * the app services switch to their `dev` build targets (dev dependencies
+#     present, sources not baked into the image),
+#   * the working tree is bind-mounted, so an edit on the host is seen inside
+#     the container immediately,
+#   * watchers run in polling mode, because inotify events do not cross the
+#     Windows/WSL2 bind-mount boundary (PROJECT_STRUCTURE.md §7).
+#
+# To run the CI/production-like stack instead, opt out explicitly:
+#
+#   docker compose -f docker-compose.yml up
+
+# Shared mount set for both app services: the workspace bind mount, plus an
+# anonymous volume shadowing every workspace node_modules directory.
+#
+# The bind mount maps the host tree over /app, which would otherwise drag the
+# host's Windows-built node_modules into an Alpine container (and, in CI,
+# replace them with nothing at all). The anonymous volumes mask each one so the
+# Linux modules installed in the image win.
+#
+# The list covers ALL workspace packages, not just the ones a given image
+# installs: the point is to block whatever the host happens to have, so the
+# entry must exist before a package acquires its first dependency, not after.
+# An anonymous volume over a path the image leaves empty is inert.
+x-dev-volumes: &dev-volumes
+  - .:/app
+  - /app/node_modules
+  - /app/backend/node_modules
+  - /app/frontend/node_modules
+  - /app/db/node_modules
+  - /app/shared/node_modules
+  - /app/e2e/node_modules
+
+services:
+  backend:
+    build:
+      target: dev
+    # Dev only: worth surviving a Docker Desktop restart. The base file leaves
+    # this unset so CI can fail fast on a crash loop.
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      # tsx watches via chokidar; see the polling note above.
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+    # The whole workspace, so a change in shared/ or db/ reloads the API too.
+    volumes: *dev-volumes
+    develop:
+      watch:
+        # Dependency changes need a real image rebuild — the running container
+        # cannot install them into the shadowed node_modules volume.
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  frontend:
+    build:
+      target: dev
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      # Read by vite.config.ts to enable the polling watcher.
+      VITE_USE_POLLING: 'true'
+      # Lets the HMR client in the browser connect back on the published port.
+      FRONTEND_PORT: ${FRONTEND_PORT}
+    # `!override` is required, not stylistic: Compose CONCATENATES `ports` across
+    # files instead of replacing them. Without it the service inherits the base
+    # file's ${FRONTEND_PORT}:80 as well, both mappings claim the same host port,
+    # and the container silently ends up with no published port at all.
+    ports: !override # Vite dev server, not nginx:80 as in the base file.
+      - '${FRONTEND_PORT}:5173'
+    volumes: *dev-volumes
+    # The dev image is node, not nginx, and the port is 5173 — so the base
+    # file's nginx probe does not apply.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('node:net').connect(5173,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  # Present only to add the dev restart policy; everything else comes from the
+  # base file.
+  postgres:
+    restart: unless-stopped
+
+  mailpit:
+    restart: unless-stopped

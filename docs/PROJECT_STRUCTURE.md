@@ -29,13 +29,17 @@ physiobook/
 ├── docker/                   # Dockerfiles + service configs
 │   ├── frontend.Dockerfile
 │   ├── backend.Dockerfile
+│   ├── frontend/
+│   │   └── nginx.conf        # SPA fallback + cache headers for the built assets
 │   └── postgres/
 │       └── init.sql          # extensions (btree_gist, citext) on first boot — single source
 ├── .github/
 │   └── workflows/
-│       └── ci.yml            # lint → typecheck → unit/integration → coverage (e2e added in E7)
+│       ├── ci.yml            # lint → typecheck → unit/integration → coverage (e2e added in E7)
+│       └── docker-smoke.yml  # compose up → healthchecks → btree_gist → down
 ├── docker-compose.yml        # Postgres + Mailpit + backend + frontend
 ├── docker-compose.override.yml   # local dev tweaks (hot reload w/ polling, exposed ports); auto-applied
+├── .dockerignore             # keeps host node_modules and .env out of build contexts
 ├── .env.example              # documents every required env var
 ├── .gitignore
 ├── .gitattributes            # enforces LF line endings (Windows-safe)
@@ -201,7 +205,12 @@ frontend   →  Vite dev server (dev) / static build served (prod)
 - Each service defines a **TCP/port-level healthcheck**; the CI smoke test brings the base stack up and waits for those to pass.
 - Per-service Dockerfiles live in `docker/` as multi-stage builds (deps → build → slim runtime), keeping production images small.
 - **Mailpit** means every notification is testable end-to-end without sending real email — the same capture point CI uses (in the E7 e2e stage).
-- **Prerequisite:** Docker Desktop with the WSL2 backend.
+- **Prerequisite:** Docker Desktop with the WSL2 backend, and a root `.env` (`cp .env.example .env`). The base file references every variable without a default, so a missing `.env` fails at `up` rather than booting with surprise credentials.
+
+**Two gotchas worth not rediscovering:**
+
+- **Postgres 18 moved its data directory.** The volume mounts at `/var/lib/postgresql`, _not_ `/var/lib/postgresql/data` — the image now keeps data in a major-version subdirectory and refuses to start if it finds the old layout ([docker-library/postgres#1259](https://github.com/docker-library/postgres/pull/1259)).
+- **Compose concatenates `ports` across files** rather than replacing them, so the override tags the frontend's list `!override`. Without it the dev service inherits the base file's `:80` mapping too, both mappings claim the same host port, and the container comes up with no published port at all — while its TCP healthcheck still passes, because that probe runs _inside_ the container.
 
 ---
 

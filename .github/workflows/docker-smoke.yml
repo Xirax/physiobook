@@ -1,0 +1,133 @@
+# Smoke test for the docker-compose stack (ticket 0.2).
+#
+# Deliberately standalone rather than a job inside ci.yml: this proves the
+# infrastructure boots, while ci.yml (ticket 0.3) proves the code is correct.
+# Keeping them apart means a broken Dockerfile does not mask a lint failure,
+# and the two tickets do not fight over the same file.
+
+name: docker-smoke
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: compose up → healthy → btree_gist → down
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Seed .env from .env.example
+        # The base compose file references every variable without a default, so
+        # this step is what proves .env.example is complete and usable as-is.
+        #
+        # The assertions below read their ports and identifiers from .env rather
+        # than hardcoding them, so changing a port in .env.example cannot leave
+        # CI quietly testing the old one.
+        #
+        # Only the keys the assertions actually use are promoted, and never a
+        # credential: dumping .env wholesale would make every future secret
+        # (JWT_SECRET from E1 onward) a job-wide env var visible to every later
+        # step. POSTGRES_PASSWORD is not needed at all — psql runs via
+        # `compose exec` as the container's own superuser.
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          for key in POSTGRES_USER POSTGRES_DB BACKEND_PORT FRONTEND_PORT \
+                     MAILPIT_UI_PORT MAILPIT_SMTP_PORT; do
+            # Strip any inline comment and surrounding whitespace: an unstripped
+            # value would corrupt $GITHUB_ENV rather than fail visibly.
+            value=$(grep -E "^${key}=" .env | tail -n1 | cut -d= -f2- \
+              | sed -e 's/[[:space:]]*#.*$//' -e 's/[[:space:]]*$//' | tr -d '\r')
+            # Every key here is a port or a bare identifier. Anything else means
+            # .env.example grew a quoted, spaced or multi-line value that this
+            # extraction would silently truncate — fail loudly instead.
+            if ! printf '%s' "$value" | grep -qE '^[A-Za-z0-9_-]+$'; then
+              echo "::error::${key} is missing from .env.example or is not a plain value: '${value}'"
+              exit 1
+            fi
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Boot the base stack and wait for every healthcheck
+        # -f docker-compose.yml only: the dev override must not leak into CI.
+        # --wait blocks until every service with a healthcheck reports healthy
+        # and fails the step if any container exits or stays unhealthy.
+        run: docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 300
+
+      - name: Assert the required extensions are installed
+        # The acceptance criterion for docker/postgres/init.sql. `-tA` strips
+        # padding and headers so the comparison is exact, and the query returns
+        # nothing at all if the extension is missing.
+        run: |
+          set -euo pipefail
+          for ext in btree_gist citext; do
+            installed=$(docker compose -f docker-compose.yml exec -T postgres \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT extname FROM pg_extension WHERE extname = '$ext'")
+            if [ "$installed" != "$ext" ]; then
+              echo "::error::$ext is not installed — check docker/postgres/init.sql"
+              exit 1
+            fi
+            echo "$ext present."
+          done
+
+      - name: Assert the services answer, not just listen
+        # The healthchecks are TCP-level and run inside each container, so they
+        # stay green even when a port publish is broken. These requests come
+        # from the host and prove the services are reachable and serving.
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${MAILPIT_UI_PORT}/readyz"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${BACKEND_PORT}/health"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${FRONTEND_PORT}/" > /dev/null
+          echo "Mailpit, backend and frontend all responded."
+
+      - name: Assert Mailpit captures mail over SMTP
+        # Mailpit exists to be the capture point for every notification, and the
+        # UI answering on 8025 says nothing about whether 1025 accepts mail.
+        # Send a real message and read it back through the API — that is the
+        # path E6's notification tests will depend on.
+        run: |
+          set -euo pipefail
+          cat > /tmp/probe.eml <<'EOF'
+          From: probe@physiobook.test
+          To: probe@physiobook.test
+          Subject: docker-smoke probe
+
+          If you can read this, SMTP capture works.
+          EOF
+          curl --fail --silent --show-error \
+            --url "smtp://localhost:${MAILPIT_SMTP_PORT}" \
+            --mail-from probe@physiobook.test \
+            --mail-rcpt probe@physiobook.test \
+            --upload-file /tmp/probe.eml
+          count=$(curl --fail --silent --show-error \
+            "http://localhost:${MAILPIT_UI_PORT}/api/v1/messages" \
+            | jq '[.messages[] | select(.Subject == "docker-smoke probe")] | length')
+          if [ "$count" -lt 1 ]; then
+            echo "::error::Mailpit accepted SMTP but the message never appeared in its inbox"
+            exit 1
+          fi
+          echo "Mailpit captured the probe message."
+
+      - name: Dump service logs
+        if: failure()
+        run: docker compose -f docker-compose.yml logs --no-color
+
+      - name: Tear down
+        if: always()
+        # -v drops the postgres volume so a rerun exercises init.sql again
+        # rather than reusing an already-initialised data directory.
+        run: docker compose -f docker-compose.yml down -v --remove-orphans

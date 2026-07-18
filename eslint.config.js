@@ -1,5 +1,7 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -52,6 +54,29 @@ export default tseslint.config(
       globals: {
         ...globals.browser,
       },
+    },
+  },
+
+  // React rules for the client.
+  //
+  // Accessibility is a must-check on every frontend PR (REVIEWER.md §6), which
+  // is only enforceable if a linter checks it — so jsx-a11y lands here with the
+  // very first component rather than after a pile of markup has accumulated.
+  // react-hooks catches the rules-of-hooks violations TypeScript cannot see.
+  //
+  // Covers .ts as well as .tsx on purpose: custom hooks live in plain .ts under
+  // features/ (PROJECT_STRUCTURE.md §3), and that is exactly where a
+  // conditionally-called hook hides. jsx-a11y is inert on files without JSX, so
+  // widening the glob costs nothing.
+  {
+    files: ['frontend/**/*.{ts,tsx}'],
+    plugins: {
+      'jsx-a11y': jsxA11y,
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      ...reactHooks.configs['recommended-latest'].rules,
     },
   },
 

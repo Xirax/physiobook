@@ -2,10 +2,11 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     // Browser package bundled by Vite, so it overrides the Node-oriented
-    // module settings in the base config. `jsx` is added with React (E1).
+    // module settings in the base config.
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "types": [],
     "noEmit": true
   },

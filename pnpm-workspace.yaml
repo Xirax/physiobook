@@ -4,3 +4,10 @@ packages:
   - 'db'
   - 'shared'
   - 'e2e'
+# pnpm blocks dependency install scripts by default. Each entry here is a
+# deliberate exception, reviewed once and recorded rather than re-approved
+# interactively on every machine.
+allowBuilds:
+  # Vite's bundler. Its install script fetches the platform-specific binary;
+  # without it Vite cannot start at all.
+  esbuild: true

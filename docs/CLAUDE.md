@@ -81,11 +81,10 @@ Full detail: `REQUIREMENTS.md` and `SCHEMA.md`. If code and these docs disagree,
 1. **Tests ship with the code.** A feature PR without its tests is incomplete. No exceptions.
 2. **Prove correctness against real Postgres.** Race, overlap, and constraint tests run on Testcontainers/CI service Postgres — never a mock.
 3. **Validate at the boundary with the `shared/` Zod schemas.** Trust nothing from the client.
-4. **Follow the sequenced backlog** (`BACKLOG.xlsx`). Respect ticket dependencies; don't build a feature whose foundation isn't merged.
-5. **Keep the four goals intact** (§1). Flag any change that risks them.
-6. **Small, focused PRs**, one ticket each, with a clear description and the tests that prove it.
-7. **Ask when the spec is ambiguous.** Don't invent domain behaviour — surface the question.
-8. **No secrets in code.** Everything through validated env (`backend/src/config/env.ts`); update `.env.example` when you add a variable.
+4. **Keep the four goals intact** (§1). Flag any change that risks them.
+5. **Small, focused PRs**, one ticket each, with a clear description and the tests that prove it.
+6. **Ask when the spec is ambiguous.** Don't invent domain behaviour — surface the question.
+7. **No secrets in code.** Everything through validated env (`backend/src/config/env.ts`); update `.env.example` when you add a variable.
 
 ---
 
