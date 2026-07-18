@@ -134,3 +134,24 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# --- PhysioBook ---
+
+# Real env files; .env.example is committed and documents every variable.
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+
+# Playwright
+/e2e/playwright-report/
+/e2e/test-results/
+/e2e/blob-report/
+/e2e/.cache/
+
+# Editors
+.idea/
+*.swp

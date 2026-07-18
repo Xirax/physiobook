@@ -1,0 +1,12 @@
+{
+  "name": "@physiobook/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fastify API server + pg-boss worker.",
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "physiobook",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Appointment booking app for a solo physiotherapist (monorepo root).",
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": "22.14.0"
+  },
+  "scripts": {
+    "lint": "pnpm lint:root && pnpm -r lint",
+    "lint:fix": "pnpm lint:root:fix && pnpm -r lint:fix",
+    "lint:root": "eslint eslint.config.js --max-warnings 0",
+    "lint:root:fix": "eslint eslint.config.js --fix",
+    "typecheck": "pnpm -r typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.1",
+    "eslint": "^10.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "prettier": "^3.9.5",
+    "typescript": "6.0.3",
+    "typescript-eslint": "^8.64.0"
+  }
+}

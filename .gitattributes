@@ -1,2 +1,17 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Normalise all text files to LF in the repo *and* in the working tree.
+# The primary dev host is Windows, but shell scripts and postgres/init.sql are
+# executed inside Linux containers, so CRLF must never reach them.
+* text=auto eol=lf
+
+# Binary files: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+
+# Generated: keep out of diffs and don't let anyone hand-edit.
+pnpm-lock.yaml linguist-generated=true -diff
