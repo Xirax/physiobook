@@ -1,0 +1,14 @@
+{
+  // Config files (vite.config.ts) run in Node, not the browser, so they need
+  // Node globals and types that must stay out of `src`. Kept as a second
+  // project rather than widening tsconfig.json, otherwise application code
+  // could reach for `process` and typecheck clean.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["vite.config.ts"]
+}

@@ -1,0 +1,87 @@
+# Smoke test for the docker-compose stack (ticket 0.2).
+#
+# Deliberately standalone rather than a job inside ci.yml: this proves the
+# infrastructure boots, while ci.yml (ticket 0.3) proves the code is correct.
+# Keeping them apart means a broken Dockerfile does not mask a lint failure,
+# and the two tickets do not fight over the same file.
+
+name: docker-smoke
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    name: compose up → healthy → btree_gist → down
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Seed .env from .env.example
+        # The base compose file references every variable without a default, so
+        # this step is what proves .env.example is complete and usable as-is.
+        run: cp .env.example .env
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Boot the base stack and wait for every healthcheck
+        # -f docker-compose.yml only: the dev override must not leak into CI.
+        # --wait blocks until every service with a healthcheck reports healthy
+        # and fails the step if any container exits or stays unhealthy.
+        run: docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 300
+
+      - name: Assert btree_gist is installed
+        # The acceptance criterion for docker/postgres/init.sql. `-t -A` strips
+        # padding and headers so the comparison is exact, and the query returns
+        # nothing at all if the extension is missing.
+        run: |
+          set -euo pipefail
+          installed=$(docker compose -f docker-compose.yml exec -T postgres \
+            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+            "SELECT extname FROM pg_extension WHERE extname = 'btree_gist'")
+          if [ "$installed" != "btree_gist" ]; then
+            echo "::error::btree_gist is not installed — check docker/postgres/init.sql"
+            exit 1
+          fi
+          echo "btree_gist present."
+        env:
+          POSTGRES_USER: physiobook
+          POSTGRES_DB: physiobook
+
+      - name: Assert citext is installed
+        run: |
+          set -euo pipefail
+          installed=$(docker compose -f docker-compose.yml exec -T postgres \
+            psql -U physiobook -d physiobook -tAc \
+            "SELECT extname FROM pg_extension WHERE extname = 'citext'")
+          if [ "$installed" != "citext" ]; then
+            echo "::error::citext is not installed — check docker/postgres/init.sql"
+            exit 1
+          fi
+          echo "citext present."
+
+      - name: Assert Mailpit UI and backend answer over HTTP
+        # The healthchecks are TCP-level; these two requests prove the services
+        # are actually serving, not just holding a socket open.
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:8025/readyz
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:3000/health
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:5173/ > /dev/null
+          echo "Mailpit, backend and frontend all responded."
+
+      - name: Dump service logs
+        if: failure()
+        run: docker compose -f docker-compose.yml logs --no-color
+
+      - name: Tear down
+        if: always()
+        # -v drops the postgres volume so a rerun exercises init.sql again
+        # rather than reusing an already-initialised data directory.
+        run: docker compose -f docker-compose.yml down -v --remove-orphans

@@ -1,0 +1,84 @@
+# PhysioBook — local development overlay.
+#
+# Compose loads this file automatically alongside docker-compose.yml, so plain
+# `docker compose up` gives you the dev stack. Nothing here should be needed to
+# run the app correctly — it only trades production fidelity for fast feedback:
+#
+#   * the app services switch to their `dev` build targets (dev dependencies
+#     present, sources not baked into the image),
+#   * the working tree is bind-mounted, so an edit on the host is seen inside
+#     the container immediately,
+#   * watchers run in polling mode, because inotify events do not cross the
+#     Windows/WSL2 bind-mount boundary (PROJECT_STRUCTURE.md §7).
+#
+# To run the CI/production-like stack instead, opt out explicitly:
+#
+#   docker compose -f docker-compose.yml up
+
+services:
+  backend:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+      # tsx watches via chokidar; see the polling note above.
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+    volumes:
+      # The whole workspace, so a change in shared/ or db/ reloads the API too.
+      - .:/app
+      # Anonymous volumes that shadow the bind mount: without them the host's
+      # node_modules (built for Windows, and absent in CI) would hide the
+      # Linux ones installed in the image, and the container would not start.
+      - /app/node_modules
+      - /app/backend/node_modules
+      - /app/frontend/node_modules
+    develop:
+      watch:
+        # Dependency changes need a real image rebuild — the running container
+        # cannot install them into the shadowed node_modules volume.
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  frontend:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+      # Read by vite.config.ts to enable the polling watcher.
+      VITE_USE_POLLING: 'true'
+      # Lets the HMR client in the browser connect back on the published port.
+      FRONTEND_PORT: ${FRONTEND_PORT}
+    # `!override` is required, not stylistic: Compose CONCATENATES `ports` across
+    # files instead of replacing them. Without it the service inherits the base
+    # file's ${FRONTEND_PORT}:80 as well, both mappings claim the same host port,
+    # and the container silently ends up with no published port at all.
+    ports: !override # Vite dev server, not nginx:80 as in the base file.
+      - '${FRONTEND_PORT}:5173'
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/frontend/node_modules
+      - /app/backend/node_modules
+    # The dev image is node, not nginx, and the port is 5173 — so the base
+    # file's nginx probe does not apply.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('node:net').connect(5173,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml

@@ -1,0 +1,26 @@
+# Keep the build context small and, more importantly, keep host artefacts out
+# of the image: node_modules built on Windows will not run on Alpine.
+
+**/node_modules
+**/dist
+**/build
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+
+.git
+.github
+.vscode
+.idea
+
+# Secrets never belong in an image layer; the runtime gets env from compose.
+.env
+.env.*
+!.env.example
+
+docs
+agents
+e2e/playwright-report
+e2e/test-results
+
+**/*.log

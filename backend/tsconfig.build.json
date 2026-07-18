@@ -1,0 +1,14 @@
+{
+  // Emit config used only by the Docker production build. The default
+  // tsconfig.json is noEmit (it exists for `typecheck` and covers tests too);
+  // this one compiles src/ to dist/ so the runtime image can run plain JS
+  // without a TypeScript loader.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true
+  },
+  "include": ["src"]
+}
