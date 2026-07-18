@@ -26,6 +26,15 @@ try {
 // process ignores it and waits out the 10s kill timeout on every restart.
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    void app.close().then(() => process.exit(0));
+    // A rejected close must still exit: left unhandled it would hang the
+    // process until Docker's kill timeout — the exact delay this handler
+    // exists to avoid.
+    void app
+      .close()
+      .then(() => process.exit(0))
+      .catch((error: unknown) => {
+        app.log.error(error, 'error during shutdown');
+        process.exit(1);
+      });
   });
 }

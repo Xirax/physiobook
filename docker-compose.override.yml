@@ -15,24 +15,41 @@
 #
 #   docker compose -f docker-compose.yml up
 
+# Shared mount set for both app services: the workspace bind mount, plus an
+# anonymous volume shadowing every workspace node_modules directory.
+#
+# The bind mount maps the host tree over /app, which would otherwise drag the
+# host's Windows-built node_modules into an Alpine container (and, in CI,
+# replace them with nothing at all). The anonymous volumes mask each one so the
+# Linux modules installed in the image win.
+#
+# The list covers ALL workspace packages, not just the ones a given image
+# installs: the point is to block whatever the host happens to have, so the
+# entry must exist before a package acquires its first dependency, not after.
+# An anonymous volume over a path the image leaves empty is inert.
+x-dev-volumes: &dev-volumes
+  - .:/app
+  - /app/node_modules
+  - /app/backend/node_modules
+  - /app/frontend/node_modules
+  - /app/db/node_modules
+  - /app/shared/node_modules
+  - /app/e2e/node_modules
+
 services:
   backend:
     build:
       target: dev
+    # Dev only: worth surviving a Docker Desktop restart. The base file leaves
+    # this unset so CI can fail fast on a crash loop.
+    restart: unless-stopped
     environment:
       NODE_ENV: development
       # tsx watches via chokidar; see the polling note above.
       CHOKIDAR_USEPOLLING: 'true'
       CHOKIDAR_INTERVAL: '300'
-    volumes:
-      # The whole workspace, so a change in shared/ or db/ reloads the API too.
-      - .:/app
-      # Anonymous volumes that shadow the bind mount: without them the host's
-      # node_modules (built for Windows, and absent in CI) would hide the
-      # Linux ones installed in the image, and the container would not start.
-      - /app/node_modules
-      - /app/backend/node_modules
-      - /app/frontend/node_modules
+    # The whole workspace, so a change in shared/ or db/ reloads the API too.
+    volumes: *dev-volumes
     develop:
       watch:
         # Dependency changes need a real image rebuild — the running container
@@ -45,6 +62,7 @@ services:
   frontend:
     build:
       target: dev
+    restart: unless-stopped
     environment:
       NODE_ENV: development
       # Read by vite.config.ts to enable the polling watcher.
@@ -57,11 +75,7 @@ services:
     # and the container silently ends up with no published port at all.
     ports: !override # Vite dev server, not nginx:80 as in the base file.
       - '${FRONTEND_PORT}:5173'
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/frontend/node_modules
-      - /app/backend/node_modules
+    volumes: *dev-volumes
     # The dev image is node, not nginx, and the port is 5173 — so the base
     # file's nginx probe does not apply.
     healthcheck:
@@ -82,3 +96,11 @@ services:
           path: ./frontend/package.json
         - action: rebuild
           path: ./pnpm-lock.yaml
+
+  # Present only to add the dev restart policy; everything else comes from the
+  # base file.
+  postgres:
+    restart: unless-stopped
+
+  mailpit:
+    restart: unless-stopped

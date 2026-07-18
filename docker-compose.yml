@@ -13,6 +13,12 @@
 # All credentials and host ports come from the root .env (seeded from
 # .env.example). Values are referenced without defaults on purpose: a missing
 # .env should fail loudly at `up`, not boot a stack with surprise credentials.
+#
+# No service sets a restart policy here, deliberately: a crash-looping container
+# never reaches `exited`, so `up --wait` cannot fail fast on it and the CI smoke
+# test would burn its whole timeout instead of reporting the crash. The dev
+# override adds `restart: unless-stopped`, where surviving a Docker Desktop
+# restart is worth more than a fast failure.
 
 name: physiobook
 
@@ -46,7 +52,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
-    restart: unless-stopped
 
   mailpit:
     image: axllent/mailpit:v1.30.4
@@ -67,7 +72,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 5s
-    restart: unless-stopped
 
   backend:
     build:
@@ -106,7 +110,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 10s
-    restart: unless-stopped
 
   frontend:
     build:
@@ -126,7 +129,6 @@ services:
       timeout: 5s
       retries: 12
       start_period: 5s
-    restart: unless-stopped
 
 volumes:
   postgres-data:

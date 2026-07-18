@@ -39,6 +39,12 @@ CMD ["pnpm", "dev"]
 # --- build: compile TypeScript to dist/ ---------------------------------------
 FROM deps AS build
 COPY tsconfig.base.json ./
+# db/ and shared/ are copied even though backend does not import them yet: the
+# `...` in the install filter above already links them into the workspace, so
+# the first `import from '@physiobook/shared'` (E1) would otherwise fail here
+# against an empty directory.
+COPY db ./db
+COPY shared ./shared
 COPY backend ./backend
 RUN pnpm --filter @physiobook/backend build
 
@@ -61,5 +67,7 @@ COPY backend/package.json ./backend/
 USER node
 WORKDIR /app/backend
 
-EXPOSE 3000
+# Deliberately no EXPOSE: the listening port is BACKEND_PORT, set by compose,
+# and a hardcoded number here would be a second source of truth that silently
+# goes stale. EXPOSE is documentation only — it publishes nothing.
 CMD ["node", "dist/index.js"]

@@ -7,8 +7,11 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "dist",
-    "rootDir": "src",
-    "sourceMap": true
+    "rootDir": "src"
+    // No sourceMap: the runtime image ships dist/ without src/, so the maps
+    // would point at files that are not there. Add them back together with
+    // the sources if stack traces ever need to be readable in a deployed
+    // container.
   },
   "include": ["src"]
 }

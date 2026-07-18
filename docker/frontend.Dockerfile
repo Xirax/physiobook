@@ -35,6 +35,10 @@ CMD ["pnpm", "dev"]
 # --- build: emit static assets ------------------------------------------------
 FROM deps AS build
 COPY tsconfig.base.json ./
+# shared/ is copied ahead of need: the frontend imports the contract types from
+# it in E1, and Vite would fail on an empty directory. db/ is deliberately
+# absent — the client must never reach the data model directly (CLAUDE.md §3).
+COPY shared ./shared
 COPY frontend ./frontend
 RUN pnpm --filter @physiobook/frontend build
 

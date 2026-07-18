@@ -25,7 +25,15 @@ jobs:
       - name: Seed .env from .env.example
         # The base compose file references every variable without a default, so
         # this step is what proves .env.example is complete and usable as-is.
-        run: cp .env.example .env
+        #
+        # Exporting it into the job environment as well means every assertion
+        # below addresses the same credentials and ports the stack was booted
+        # with. Hardcoding them here would let .env.example change a port and
+        # leave CI quietly testing the old one.
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          grep -Ev '^\s*(#|$)' .env >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,45 +44,64 @@ jobs:
         # and fails the step if any container exits or stays unhealthy.
         run: docker compose -f docker-compose.yml up --build --detach --wait --wait-timeout 300
 
-      - name: Assert btree_gist is installed
-        # The acceptance criterion for docker/postgres/init.sql. `-t -A` strips
+      - name: Assert the required extensions are installed
+        # The acceptance criterion for docker/postgres/init.sql. `-tA` strips
         # padding and headers so the comparison is exact, and the query returns
         # nothing at all if the extension is missing.
         run: |
           set -euo pipefail
-          installed=$(docker compose -f docker-compose.yml exec -T postgres \
-            psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
-            "SELECT extname FROM pg_extension WHERE extname = 'btree_gist'")
-          if [ "$installed" != "btree_gist" ]; then
-            echo "::error::btree_gist is not installed — check docker/postgres/init.sql"
-            exit 1
-          fi
-          echo "btree_gist present."
-        env:
-          POSTGRES_USER: physiobook
-          POSTGRES_DB: physiobook
+          for ext in btree_gist citext; do
+            installed=$(docker compose -f docker-compose.yml exec -T postgres \
+              psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc \
+              "SELECT extname FROM pg_extension WHERE extname = '$ext'")
+            if [ "$installed" != "$ext" ]; then
+              echo "::error::$ext is not installed — check docker/postgres/init.sql"
+              exit 1
+            fi
+            echo "$ext present."
+          done
 
-      - name: Assert citext is installed
+      - name: Assert the services answer, not just listen
+        # The healthchecks are TCP-level and run inside each container, so they
+        # stay green even when a port publish is broken. These requests come
+        # from the host and prove the services are reachable and serving.
         run: |
           set -euo pipefail
-          installed=$(docker compose -f docker-compose.yml exec -T postgres \
-            psql -U physiobook -d physiobook -tAc \
-            "SELECT extname FROM pg_extension WHERE extname = 'citext'")
-          if [ "$installed" != "citext" ]; then
-            echo "::error::citext is not installed — check docker/postgres/init.sql"
-            exit 1
-          fi
-          echo "citext present."
-
-      - name: Assert Mailpit UI and backend answer over HTTP
-        # The healthchecks are TCP-level; these two requests prove the services
-        # are actually serving, not just holding a socket open.
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:8025/readyz
-          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:3000/health
-          curl --fail --silent --show-error --retry 5 --retry-delay 2 http://localhost:5173/ > /dev/null
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${MAILPIT_UI_PORT}/readyz"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${BACKEND_PORT}/health"
+          curl --fail --silent --show-error --retry 5 --retry-delay 2 \
+            "http://localhost:${FRONTEND_PORT}/" > /dev/null
           echo "Mailpit, backend and frontend all responded."
+
+      - name: Assert Mailpit captures mail over SMTP
+        # Mailpit exists to be the capture point for every notification, and the
+        # UI answering on 8025 says nothing about whether 1025 accepts mail.
+        # Send a real message and read it back through the API — that is the
+        # path E6's notification tests will depend on.
+        run: |
+          set -euo pipefail
+          cat > /tmp/probe.eml <<'EOF'
+          From: probe@physiobook.test
+          To: probe@physiobook.test
+          Subject: docker-smoke probe
+
+          If you can read this, SMTP capture works.
+          EOF
+          curl --fail --silent --show-error \
+            --url "smtp://localhost:${MAILPIT_SMTP_PORT}" \
+            --mail-from probe@physiobook.test \
+            --mail-rcpt probe@physiobook.test \
+            --upload-file /tmp/probe.eml
+          count=$(curl --fail --silent --show-error \
+            "http://localhost:${MAILPIT_UI_PORT}/api/v1/messages" \
+            | jq '[.messages[] | select(.Subject == "docker-smoke probe")] | length')
+          if [ "$count" -lt 1 ]; then
+            echo "::error::Mailpit accepted SMTP but the message never appeared in its inbox"
+            exit 1
+          fi
+          echo "Mailpit captured the probe message."
 
       - name: Dump service logs
         if: failure()
