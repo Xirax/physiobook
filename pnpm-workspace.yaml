@@ -11,3 +11,14 @@ allowBuilds:
   # Vite's bundler. Its install script fetches the platform-specific binary;
   # without it Vite cannot start at all.
   esbuild: true
+
+  # The three below arrive under testcontainers → dockerode → ssh2. Their build
+  # scripts only compile optional native speedups for SSH transport, which we
+  # never use: Testcontainers talks to the local Docker daemon over a socket or
+  # named pipe. ssh2 and protobufjs both fall back to pure JS, so building them
+  # would cost a compiler toolchain on every machine and in CI to speed up a
+  # code path this repo does not execute. Denied explicitly rather than left
+  # unanswered, so `pnpm install` stays silent instead of nagging.
+  cpu-features: false
+  protobufjs: false
+  ssh2: false

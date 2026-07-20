@@ -1,5 +1,14 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 
+export interface BuildServerOptions {
+  /**
+   * Request logging. On by default so the running server is observable; tests
+   * turn it off, since a pino line per `.inject()` call buries the actual test
+   * output.
+   */
+  logger?: boolean;
+}
+
 /**
  * Builds and configures the Fastify instance.
  *
@@ -11,9 +20,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
  * real HTTP server to boot and healthcheck. Plugins (db, auth, cookie, error
  * handler) and route modules are registered here as their tickets land.
  */
-export function buildServer(): FastifyInstance {
+export function buildServer(options: BuildServerOptions = {}): FastifyInstance {
   const app = Fastify({
-    logger: true,
+    logger: options.logger ?? true,
   });
 
   // Liveness probe. The compose healthcheck is TCP-level (it only proves the

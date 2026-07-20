@@ -1,0 +1,149 @@
+# PhysioBook CI (ticket 0.3).
+#
+# install → lint → typecheck → unit/integration → coverage, failing fast.
+#
+# Deliberately ONE job with ordered steps rather than a job per stage. Separate
+# jobs would each pay a fresh checkout + install (~the cost of the actual work
+# at this size) and would need explicit `needs:` chains to stay ordered. Steps
+# in a job already stop at the first failure, which is exactly the fail-fast
+# behaviour the ticket asks for, and the stage that failed is still obvious in
+# the UI. Revisit if a stage grows long enough to be worth parallelising.
+#
+# The e2e stage is intentionally absent — it arrives in E7 with Playwright.
+# Infrastructure (docker-compose) is proven separately by docker-smoke.yml.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Superseded runs are pointless: a new push to a PR makes the in-flight run's
+# result irrelevant. Cancel it and free the runner.
+#
+# main is excluded from cancellation on purpose — every commit that lands on the
+# default branch needs its own verdict, or a fast series of merges leaves the
+# branch with commits nobody ever tested.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  # The coverage gate. Placeholder at 0 for the empty scaffold; ticket 7.4
+  # raises it to a real number. Changing it here changes it for the whole
+  # pipeline — vitest.config.ts reads this variable.
+  COVERAGE_THRESHOLD: 0
+
+jobs:
+  verify:
+    # Stages: install → lint → typecheck → format → unit/integration → coverage.
+    #
+    # Deliberately NOT spelled out in `name:`. Branch protection matches the
+    # required status check by this exact string, so listing the stages here
+    # would mean adding the e2e stage in E7 silently detaches protection — the
+    # checkbox in repo settings keeps pointing at a check name that no longer
+    # exists, and nothing anywhere reports an error. A stable name plus this
+    # comment gives the same information without the trapdoor.
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Order matters: pnpm must exist before setup-node, or setup-node's
+      # pnpm cache resolution has no package manager to ask for the store path.
+      # Version comes from the root package.json `packageManager` field — no
+      # second place to bump.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v6
+        with:
+          # .nvmrc is the single source for the Node version, shared with
+          # contributors. `engine-strict` in .npmrc means a mismatch here fails
+          # the install loudly rather than drifting.
+          node-version-file: .nvmrc
+          # Caches the pnpm *store* (keyed on pnpm-lock.yaml), not node_modules:
+          # the store is content-addressed, so a restored store makes install a
+          # near-instant hardlink pass and stays correct even when the lockfile
+          # changes.
+          cache: pnpm
+
+      - name: Install dependencies
+        # --frozen-lockfile is the default in CI, but stated explicitly because
+        # it is load-bearing: it fails the run if pnpm-lock.yaml is out of date
+        # rather than silently resolving different versions than a developer has.
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Format check
+        # Cheap, and it keeps "prettier --write" churn out of feature diffs.
+        run: pnpm format:check
+
+      # Unit + integration in one command. Integration tests provision Postgres
+      # through Testcontainers against the runner's own Docker daemon
+      # (ubuntu-latest ships one), so there is no `services:` block here and no
+      # CI-only database path that could drift from local runs.
+      - name: Unit + integration tests with coverage
+        run: pnpm test:coverage
+
+      - name: Write coverage to the job summary
+        # Runs on failure so a coverage *gate* failure still reports the numbers
+        # — otherwise the one run where you most want to see coverage is the one
+        # that shows none. Skipped silently if the tests died before writing a
+        # report.
+        #
+        # `!cancelled()` rather than `always()`: a superseded run cancelled by
+        # the concurrency block should exit immediately, not stop to parse a
+        # report and upload an artifact nobody will read. Nothing to report on a
+        # run whose result is already irrelevant.
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          summary=coverage/coverage-summary.json
+          if [ ! -f "$summary" ]; then
+            echo "No coverage summary produced — the test stage failed before reporting." \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          {
+            echo "## Coverage"
+            echo
+            echo "Gate: **${COVERAGE_THRESHOLD}%** (placeholder until ticket 7.4)"
+            echo
+            echo "| Metric | Covered | Total | % | |"
+            echo "| --- | ---: | ---: | ---: | :-: |"
+            # Exactly the four metrics the gate checks, in a fixed order —
+            # iterating the object instead would also print `branchesTrue`,
+            # which is an artifact of the report format (pct "Unknown") and
+            # nothing anyone is measured against.
+            jq -r --argjson gate "${COVERAGE_THRESHOLD}" '
+              ["lines", "statements", "functions", "branches"][] as $metric
+              | .total[$metric]
+              | "| \($metric) | \(.covered) | \(.total) | \(.pct)% | \(if .pct >= $gate then "✅" else "❌" end) |"
+            ' "$summary"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        # See the summary step above for why this is `!cancelled()`.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          # lcov.info for tooling, the html/ tree for humans.
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14

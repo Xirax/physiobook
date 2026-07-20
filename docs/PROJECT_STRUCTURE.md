@@ -3,7 +3,7 @@
 **Type:** Monorepo
 **Package manager / workspaces:** pnpm workspaces _(decided — pinned via `packageManager`; fast, strict, first-class monorepo support)_
 **Optional task runner:** Turborepo _(for cached, parallel `build`/`test`/`lint` across packages — add when the repo grows)_
-**Last updated:** 2026-07-18
+**Last updated:** 2026-07-20
 
 ---
 
@@ -48,6 +48,8 @@ physiobook/
 ├── package.json              # workspace root: shared scripts, dev tooling, packageManager pin
 ├── pnpm-workspace.yaml       # declares the workspace packages
 ├── tsconfig.base.json        # shared compiler options; packages extend this
+├── vitest.config.ts          # composes each package's suite as a Vitest project;
+│                             #   owns coverage reporters + the coverage gate
 ├── eslint.config.js          # flat ESLint config, shared
 ├── .prettierrc
 ├── REQUIREMENTS.md
@@ -131,9 +133,11 @@ backend/
 │   ├── helpers/
 │   │   ├── test-app.ts       # builds Fastify app for `.inject()`
 │   │   └── test-db.ts        # Testcontainers: boot Postgres once → load init.sql → migrate a template → clone per test
+│   ├── db/
+│   │   └── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
-├── vitest.config.ts
+├── vitest.config.ts          # what to run; coverage/gate come from the root config
 ├── tsconfig.json             # extends ../tsconfig.base.json
 └── package.json
 ```
@@ -229,16 +233,23 @@ frontend   →  Vite dev server (dev) / static build served (prod)
 Runs on every push / PR (`ubuntu-latest`), in order, failing fast:
 
 ```
-1. install (pnpm store, cached)
+1. install      (pnpm store, cached)
 2. lint         (eslint)
 3. typecheck    (tsc --noEmit across packages)
-4. unit + integration tests   (Vitest; Postgres via Testcontainers, Docker on the runner)
-5. coverage     (Vitest v8; upload as GitHub artifact + job summary; gate mechanism enforced)
+4. format       (prettier --check)
+5. unit + integration tests   (Vitest; Postgres via Testcontainers, Docker on the runner)
+6. coverage     (Vitest v8; upload as GitHub artifact + job summary; gate mechanism enforced)
 ```
 
-- Integration/race/overlap tests provision Postgres with the **same Testcontainers harness** used locally — there is no separate service-container path — so they run identically in CI and on a dev machine.
+- All six stages are **steps in a single job**, not six jobs: steps already stop at the first failure (the fail-fast requirement), and separate jobs would each repeat checkout + install for no benefit at this size.
+- The job is named **`verify`**, and the stage list lives in a comment inside the workflow rather than in `name:`. Branch protection matches the required check by that exact string, so a descriptive name would silently detach protection the moment a stage is added (E7's e2e) — with no error reported anywhere.
+- **Blocking a PR requires `verify` to be a required status check** on `main`, configured in repo settings — no file in this repo can set it. Until that is ticked, a red run is advisory and the merge button stays green.
+- Integration/race/overlap tests provision Postgres with the **same Testcontainers harness** used locally — there is no separate service-container path — so they run identically in CI and on a dev machine. **Docker must be running locally** to run the suite; `ubuntu-latest` provides it on CI.
+- Every package's suite runs through the **root `vitest.config.ts` as a Vitest project** (`pnpm test`), not `pnpm -r test`, because the gate needs one coverage number for the whole repo rather than one unmergeable report per package. Packages join the `projects` list as they grow tests.
+- **`concurrency`** cancels superseded runs on PR branches; runs on `main` are never cancelled, so every landed commit keeps its own verdict.
 - **e2e (Playwright against the docker-compose stack + Mailpit) is added in E7**, not in the 0.3 skeleton.
-- The coverage **gate mechanism** lands with the pipeline (placeholder threshold, so the empty scaffold stays green); the **real threshold is set and enforced in ticket 7.4**, keeping the "full coverage" goal enforceable rather than aspirational.
+- The coverage **gate mechanism** lands with the pipeline (placeholder threshold, so the empty scaffold stays green); the **real threshold is set and enforced in ticket 7.4**, keeping the "full coverage" goal enforceable rather than aspirational. The threshold is the `COVERAGE_THRESHOLD` env var — set once in `ci.yml`, read by `vitest.config.ts`, overridable locally (`COVERAGE_THRESHOLD=80 pnpm test:coverage`).
+- Coverage is reported with `all: true`, so an untested module shows as a 0% row rather than being omitted — coverage cannot look healthy by virtue of files nobody imported.
 
 ---
 
