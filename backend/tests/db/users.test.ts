@@ -1,5 +1,5 @@
 import { users } from '@physiobook/db';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
@@ -58,10 +58,16 @@ describe('users table', () => {
   it('still allows any number of ordinary users', async () => {
     // The other half of "partial": the index must constrain admins only, or the
     // app would have exactly one patient.
-    await insertUser('patient.one@example.com');
-    await insertUser('patient.two@example.com');
+    const emails = ['patient.one@example.com', 'patient.two@example.com'];
 
-    const count = await database.db.$count(users, eq(users.role, 'user'));
+    await insertUser(emails[0]!);
+    await insertUser(emails[1]!);
+
+    // Scoped to the two addresses this test inserted, not `role = 'user'`.
+    // Counting every user row would pass only while no test above happens to
+    // insert one, making a later addition to this file fail here for a reason
+    // unrelated to the property under test.
+    const count = await database.db.$count(users, inArray(users.email, emails));
     expect(count).toBe(2);
   });
 

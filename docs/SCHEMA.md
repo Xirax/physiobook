@@ -22,21 +22,25 @@ Appointment-specific data (which user, status history) lives in an **`appointmen
 
 ### 2.1 `users`
 
-| Column          | Type             | Notes                              |
-| --------------- | ---------------- | ---------------------------------- |
-| `id`            | `uuid` PK        | `default gen_random_uuid()`        |
-| `email`         | `citext`         | **unique**, case-insensitive       |
-| `password_hash` | `text`           | bcrypt/argon2 hash                 |
-| `role`          | `user_role` enum | `'user' \| 'admin'` (single admin) |
-| `full_name`     | `text`           |                                    |
-| `created_at`    | `timestamptz`    | `default now()`                    |
-| `updated_at`    | `timestamptz`    | `default now()`                    |
+| Column          | Type             | Notes                                            |
+| --------------- | ---------------- | ------------------------------------------------ |
+| `id`            | `uuid` PK        | `default gen_random_uuid()`                      |
+| `email`         | `citext`         | NOT NULL, **unique**, case-insensitive           |
+| `password_hash` | `text`           | NOT NULL; bcrypt/argon2 hash                     |
+| `role`          | `user_role` enum | NOT NULL, `default 'user'`; `'user' \| 'admin'`  |
+| `full_name`     | `text`           | NOT NULL — see below                             |
+| `created_at`    | `timestamptz`    | NOT NULL, `default now()`                        |
+| `updated_at`    | `timestamptz`    | NOT NULL, `default now()`; maintained by trigger |
 
+**Every column is `NOT NULL`.** Recorded explicitly because it is a contract on the registration payload, not just a storage detail.
+
+- `full_name` being NOT NULL makes a name a **required** registration field: the practitioner reads a day's appointments as a list of people, and a nameless booking is not actionable. There is no "anonymous patient" case in the MVP. If a future flow needs one, that is a migration and a contract change, not a nullable column added quietly.
 - Enum `user_role = ('user','admin')`.
 - `email` is `citext`, so uniqueness is case-insensitive **in the database** — `Alex@x.com` and `alex@x.com` cannot both exist, whether or not a caller normalised the address.
 - **Single-admin invariant is a partial unique index**, not app logic: `CREATE UNIQUE INDEX users_single_admin_idx ON users (role) WHERE role = 'admin'`. Counting admins before inserting is the same check-then-insert race the ledger refuses elsewhere (CLAUDE.md §4), so the index is the arbiter. Ordinary users are unconstrained by it.
 - `updated_at` is maintained by a `BEFORE UPDATE` trigger on the shared `set_updated_at()` function, so it is correct for every writer including hand-typed SQL.
-- The **default admin** (`admin@physiobook.local`) is inserted by a **data migration**, not by `db:seed`: there is no admin-registration route, so an install without it cannot grow one. The committed password hash is a local-development default to be replaced after the first deploy.
+- The **default admin** (`admin@physiobook.local`) is inserted by a **data migration**, not by `db:seed`: there is no admin-registration route, so an install without it cannot grow one.
+- That admin's **password hash comes from `ADMIN_PASSWORD_HASH`** (via the `physiobook.admin_password_hash` run-time parameter, which is how a value reaches a `.sql` file the migrator runs verbatim). Unset, it falls back to a hash committed in the migration whose password is public — fine for a throwaway local database, and `db:migrate` warns whenever it takes that path. Read only on the first apply, since the insert is `ON CONFLICT DO NOTHING`.
 
 ---
 

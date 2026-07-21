@@ -183,6 +183,7 @@ db/
 - A reusable `set_updated_at()` trigger function is created once — in `0001_users_updated_at_and_admin.sql`, the first migration that needed it; every later table attaches its own trigger to that same function to keep `updated_at` current at the database level.
 - **Hand-written migrations** (the trigger, the ledger's `EXCLUDE` constraint, data migrations) are generated with `drizzle-kit generate --custom`, so they sit in the journal alongside the diffed ones. The migrator splits a file on the literal `statement-breakpoint` marker and nothing else, so a dollar-quoted function body is safe — but the marker must never appear in prose, including a comment, or the file is cut there and Postgres is handed the text.
 - **Rows an install cannot function without** — currently just the default admin, which no route can create — are inserted by a migration. `seed.ts` is for dev/demo data only, and no test may depend on it.
+- **Secrets in a data migration** come from a Postgres run-time parameter, not a literal. `runMigrations()` takes them as options and sets them on its single connection; the `.sql` file reads them with `current_setting(name, true)` and `COALESCE`s to a development default. This is the only channel available, since the migrator executes files verbatim and cannot bind parameters into them. The CLI reads the environment (`ADMIN_PASSWORD_HASH`) and warns when a public default is about to be used; library code still takes everything as arguments.
 
 ---
 

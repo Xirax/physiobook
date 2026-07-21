@@ -41,14 +41,23 @@ CREATE TRIGGER users_set_updated_at
 -- row has no way to grow one, so it is part of the schema's meaning, not demo
 -- data. Tests may not depend on seeds (db/src/seed.ts); they may depend on this.
 --
--- The password below is a LOCAL DEVELOPMENT DEFAULT and is public by virtue of
--- being in this file. Any real deployment changes it immediately after the first
--- migrate; nothing else in the app treats this row as special, so replacing the
--- hash is all that takes.
+-- The hash comes from the `physiobook.admin_password_hash` run-time parameter,
+-- which db/src/migrate.ts sets from ADMIN_PASSWORD_HASH (see .env.example).
+-- Deployments set it and never ship the fallback below.
+--
+-- The fallback IS PUBLIC — it is in this file and in the git history — and
+-- exists so a developer gets a working login from `docker compose up` alone.
+-- It is reached only on a database with no admin yet, and `pnpm db:migrate`
+-- prints a warning whenever it is about to be used.
 --
 --   email:    admin@physiobook.local
---   password: ChangeMe123!
+--   password: ChangeMe123!   (fallback only)
 --   hash:     bcrypt, cost 12
+--
+-- NOTE: nothing yet proves that plaintext still matches that hash — this repo
+-- has no password-hashing library to check it with. When the auth module adds
+-- one, assert the pair in backend/tests/db/users.test.ts so the two cannot
+-- drift into a comment that lies.
 --
 -- ON CONFLICT DO NOTHING keeps the migration re-runnable against a database that
 -- already has an admin — and, more usefully, means a deployment that changed the
@@ -59,7 +68,13 @@ CREATE TRIGGER users_set_updated_at
 INSERT INTO users (email, password_hash, role, full_name)
 VALUES (
   'admin@physiobook.local',
-  '$2b$12$ysW7fBnWX1IJCz7KDEmBIeSXr3jGrIMNFEeJDiu0iz9j2dA4L7uxi',
+  -- `true` makes an unset parameter NULL instead of an error; NULLIF then folds
+  -- an explicitly-blank one onto the same branch, so neither can create an
+  -- admin whose password_hash matches nothing.
+  COALESCE(
+    NULLIF(current_setting('physiobook.admin_password_hash', true), ''),
+    '$2b$12$ysW7fBnWX1IJCz7KDEmBIeSXr3jGrIMNFEeJDiu0iz9j2dA4L7uxi'
+  ),
   'admin',
   'PhysioBook Admin'
 )
