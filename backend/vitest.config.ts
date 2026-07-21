@@ -18,9 +18,26 @@ export default defineConfig({
     // harness. See PROJECT_STRUCTURE.md §4.
     include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
 
-    // Booting a Postgres container is far slower than any unit test. The
-    // default 5s would fail an integration test purely on image pull time on a
-    // cold CI runner; the container helpers set their own longer hook timeout.
+    // Boots the one Postgres the run shares and leaves a migrated template
+    // behind; test files clone it through tests/helpers/test-db.ts. Runs once
+    // per run, before any test file — the only place a single container can
+    // live, since test files run in separate workers and share no module state.
+    //
+    // It starts unconditionally, so every backend run needs Docker, including
+    // one that only touches unit tests. That is the deliberate trade: the
+    // alternative — booting lazily on first use — puts the image pull inside
+    // whichever test happened to ask first and makes its timeout everyone's
+    // problem.
+    globalSetup: ['tests/helpers/global-setup.ts'],
+
+    // Cloning a template database is milliseconds; the default 5s is plenty for
+    // the tests themselves. The slow parts — pulling postgres:18-alpine on a
+    // cold runner, migrating the template — are in globalSetup, which Vitest
+    // does not apply this to.
     testTimeout: 30_000,
+
+    // Stopping the container is a Docker round-trip, and a teardown killed
+    // half-way leaks it for the rest of the session.
+    teardownTimeout: 60_000,
   },
 });

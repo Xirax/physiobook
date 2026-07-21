@@ -1,45 +1,35 @@
-import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { startTestPostgres } from '../helpers/test-db.js';
-
-import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
 /**
- * Integration test against a real Postgres (ticket 0.3).
+ * Integration test against a real Postgres.
  *
- * Its job in the 0.3 skeleton is to prove the CI pipeline can provision a
- * database via Testcontainers at all — if this passes on a runner, every later
- * race/overlap/constraint test has a working foundation.
+ * `btree_gist` is the hard prerequisite for the anti-double-booking EXCLUDE
+ * constraint (CLAUDE.md §4). It reaches a test database only if the harness
+ * applies docker/postgres/init.sql to the template every test clones — and if
+ * it ever stops doing that, the booking tests would fail much later with a
+ * confusing "data type uuid has no default operator class". This fails first,
+ * and says why.
  *
- * What it asserts is not filler, though: `btree_gist` is the hard prerequisite
- * for the anti-double-booking EXCLUDE constraint (CLAUDE.md §4). If
- * docker/postgres/init.sql ever stops being applied to test databases, the
- * booking tests would fail much later with a confusing "data type uuid has no
- * default operator class" — this fails first, and says why.
+ * It asserts against the *clone*, not the container's default database, because
+ * the clone is what every other test actually runs on.
  */
-describe('test database', () => {
-  let container: StartedPostgreSqlContainer;
-  let client: Client;
+describe('test database extensions', () => {
+  let database: TestDatabase;
 
   beforeAll(async () => {
-    container = await startTestPostgres();
-    client = new Client({ connectionString: container.getConnectionUri() });
-    await client.connect();
-    // Pulling postgres:18-alpine on a cold runner dominates this; the query
-    // itself is instant.
-  }, 180_000);
+    database = await createTestDatabase();
+  });
 
   afterAll(async () => {
-    // Guarded because a failure in beforeAll (image pull timeout, no Docker
-    // daemon) leaves these undefined, and an unguarded teardown would replace
-    // the real error with a TypeError.
-    await client?.end();
-    await container?.stop();
+    // Guarded: if the clone failed to appear, an unguarded teardown would
+    // replace the real error with a TypeError.
+    await database?.drop();
   });
 
   it.each(['btree_gist', 'citext'])('has the %s extension installed', async (extension) => {
-    const result = await client.query<{ extname: string }>(
+    const result = await database.pool.query<{ extname: string }>(
       'SELECT extname FROM pg_extension WHERE extname = $1',
       [extension],
     );
@@ -51,7 +41,7 @@ describe('test database', () => {
     // The actual capability btree_gist is installed for: a GiST index mixing a
     // scalar (practitioner_id) with a range. `CREATE EXTENSION` succeeding does
     // not by itself prove the operator classes are usable, so exercise it.
-    await client.query(`
+    await database.pool.query(`
       CREATE TABLE exclusion_probe (
         practitioner_id uuid NOT NULL,
         during tstzrange NOT NULL,
@@ -74,9 +64,9 @@ describe('test database', () => {
       '2026-01-01T10:00:00Z',
     ];
 
-    await client.query(insertProbe, probeValues);
+    await database.pool.query(insertProbe, probeValues);
 
-    await expect(client.query(insertProbe, probeValues)).rejects.toThrow(
+    await expect(database.pool.query(insertProbe, probeValues)).rejects.toThrow(
       /conflicting key value violates exclusion constraint/,
     );
   });

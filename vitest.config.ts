@@ -54,7 +54,17 @@ export default defineConfig({
       // import. Without this an untested module is invisible rather than a 0%
       // row, which would let coverage look healthy precisely where it is not.
       all: true,
-      include: ['backend/src/**/*.ts'],
+      // Every package that holds production code, whether or not it owns a test
+      // suite yet. db/ has no `projects` entry — it has no tests of its own —
+      // but its client and migration runner are on the production path and are
+      // exercised by the backend's harness, so leaving them out would make the
+      // gate measure a strictly smaller repo than it appears to.
+      //
+      // Two db/src rows read lower than the code is exercised, and ticket 7.4
+      // should not chase them: the migration runner executes in Vitest's
+      // globalSetup, which the provider does not instrument, and seed.ts is a
+      // dev/demo script no test may depend on.
+      include: ['backend/src/**/*.ts', 'db/src/**/*.ts'],
       exclude: [
         // Boots the server and listens; it is exercised by the docker smoke
         // workflow and, from E7, by Playwright — never by a unit test.
