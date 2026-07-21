@@ -8,10 +8,15 @@ import { requireDatabaseUrl } from './env.js';
 /**
  * Dev/demo seed data (`pnpm db:seed`).
  *
- * A stub at ticket 0.4 — there are no tables yet — but a *runnable* one: it
- * opens a real connection and closes it cleanly, so the plumbing is proven now
- * rather than debugged later on top of half-written fixtures. It grows one
- * block per ticket that introduces a table.
+ * Still a stub after E1.1, and deliberately: the only row `users` needs in
+ * every environment is the admin, and that arrives with the migrations
+ * (migrations/0001_users_updated_at_and_admin.sql) because an install without
+ * it has no way to grow one. Demo patients land here when a screen exists to
+ * show them.
+ *
+ * It stays *runnable* meanwhile — it opens a real connection and closes it
+ * cleanly, so the plumbing is proven now rather than debugged later on top of
+ * half-written fixtures.
  *
  * Seeds are for development and demos only. Nothing in the test suite may
  * depend on them: tests build the exact rows they assert on, or they are
@@ -22,7 +27,7 @@ export async function seed(connectionString: string): Promise<void> {
 
   try {
     // Placeholder round-trip: proves the URL resolves to a database that
-    // answers queries. Replaced by the first real insert in 1.1.
+    // answers queries.
     await db.execute(sql`select 1`);
   } finally {
     await close();
@@ -34,5 +39,5 @@ export async function seed(connectionString: string): Promise<void> {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const url = requireDatabaseUrl();
   await seed(url);
-  console.log('Seed complete (nothing to insert yet — the first tables land in 1.1).');
+  console.log('Seed complete (nothing to insert yet — the admin comes from the migrations).');
 }

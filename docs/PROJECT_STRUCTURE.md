@@ -137,7 +137,8 @@ backend/
 │   │   └── postgres-uri.ts   # retargets a connection URI at another database
 │   ├── db/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
-│   │   └── test-database.test.ts        # proves the harness migrates and isolates
+│   │   ├── test-database.test.ts        # proves the harness migrates and isolates
+│   │   └── users.test.ts                # citext email, single-admin index, updated_at trigger
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
@@ -178,8 +179,10 @@ db/
 - **One migration runner, two callers.** `pnpm db:migrate` and the Testcontainers harness both call `runMigrations()`; a test database built by a different code path than production would stop proving anything about production the first time the two drifted. Root passthroughs (`pnpm db:generate` / `db:migrate` / `db:seed`) run in this package.
 - **Column naming is `casing: 'snake_case'`**, set in _both_ `drizzle.config.ts` (which generates the SQL) and `src/client.ts` (which builds queries at runtime). The two never read one config, and a mismatch surfaces only as a "column does not exist" at query time.
 - **`push` is never used** — it mutates a database without leaving a migration behind, so the schema in git would stop describing what is deployed.
-- **Extensions** (`btree_gist` for the overlap `EXCLUDE` constraint, `citext` for case-insensitive email) are enabled **only** in `docker/postgres/init.sql`. That single file is loaded by both the compose Postgres and the Testcontainers helper; **no migration enables an extension**. At the DB scaffold stage there are zero migrations — the first schema migration is the `users` table.
-- A reusable `set_updated_at()` trigger function is created once (in the first migration that needs it); every table attaches its own trigger to keep `updated_at` current at the database level.
+- **Extensions** (`btree_gist` for the overlap `EXCLUDE` constraint, `citext` for case-insensitive email) are enabled **only** in `docker/postgres/init.sql`. That single file is loaded by both the compose Postgres and the Testcontainers helper; **no migration enables an extension**.
+- A reusable `set_updated_at()` trigger function is created once — in `0001_users_updated_at_and_admin.sql`, the first migration that needed it; every later table attaches its own trigger to that same function to keep `updated_at` current at the database level.
+- **Hand-written migrations** (the trigger, the ledger's `EXCLUDE` constraint, data migrations) are generated with `drizzle-kit generate --custom`, so they sit in the journal alongside the diffed ones. The migrator splits a file on the literal `statement-breakpoint` marker and nothing else, so a dollar-quoted function body is safe — but the marker must never appear in prose, including a comment, or the file is cut there and Postgres is handed the text.
+- **Rows an install cannot function without** — currently just the default admin, which no route can create — are inserted by a migration. `seed.ts` is for dev/demo data only, and no test may depend on it.
 
 ---
 

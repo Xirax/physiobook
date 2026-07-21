@@ -2,7 +2,7 @@
 
 **Engine:** PostgreSQL
 **ORM:** Drizzle (schema in `db/src/schema/`, constraints in hand-written migrations where noted)
-**Last updated:** 2026-07-13
+**Last updated:** 2026-07-21
 
 ---
 
@@ -33,7 +33,10 @@ Appointment-specific data (which user, status history) lives in an **`appointmen
 | `updated_at`    | `timestamptz`    | `default now()`                    |
 
 - Enum `user_role = ('user','admin')`.
-- Single-admin invariant enforced in app logic (only one row with `role = 'admin'`); optionally a partial unique index `UNIQUE (role) WHERE role = 'admin'`.
+- `email` is `citext`, so uniqueness is case-insensitive **in the database** — `Alex@x.com` and `alex@x.com` cannot both exist, whether or not a caller normalised the address.
+- **Single-admin invariant is a partial unique index**, not app logic: `CREATE UNIQUE INDEX users_single_admin_idx ON users (role) WHERE role = 'admin'`. Counting admins before inserting is the same check-then-insert race the ledger refuses elsewhere (CLAUDE.md §4), so the index is the arbiter. Ordinary users are unconstrained by it.
+- `updated_at` is maintained by a `BEFORE UPDATE` trigger on the shared `set_updated_at()` function, so it is correct for every writer including hand-typed SQL.
+- The **default admin** (`admin@physiobook.local`) is inserted by a **data migration**, not by `db:seed`: there is no admin-registration route, so an install without it cannot grow one. The committed password hash is a local-development default to be replaced after the first deploy.
 
 ---
 
@@ -186,7 +189,7 @@ practice_settings (singleton)      business_hours ───┘ (defines which sl
 
 - `calendar_blocks`: the GiST index backing the `EXCLUDE` constraint covers range queries; add `btree (status)` and `gist (period)` is implicit via the constraint. A partial index `(lower(period)) WHERE status='active'` speeds "upcoming" lookups.
 - `appointments`: `btree (user_id)`, unique `(block_id)`.
-- `users`: unique `(email)`.
+- `users`: unique `(email)` (case-insensitive via `citext`), plus the partial unique `(role) WHERE role = 'admin'`.
 - `notification_log`: unique `(dedupe_key)`.
 
 ---

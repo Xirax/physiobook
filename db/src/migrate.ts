@@ -23,12 +23,12 @@ import { requireDatabaseUrl } from './env.js';
 export const MIGRATIONS_DIR = fileURLToPath(new URL('../migrations', import.meta.url));
 
 /**
- * Applies every pending migration, then closes its connection.
+ * Applies every pending migration, then closes its connection. A no-op against
+ * an up-to-date database.
  *
- * A no-op against an up-to-date database, and equally a no-op while there are
- * zero migrations to apply — which is the state at ticket 0.4, since the first
- * schema migration (`users`) arrives in 1.1 and extensions are created by
- * docker/postgres/init.sql, never here.
+ * Migrations create tables, constraints and the rows an install cannot function
+ * without (the admin user); extensions are created by docker/postgres/init.sql,
+ * never here.
  */
 export async function runMigrations(connectionString: string): Promise<void> {
   // A single connection: migrations are strictly sequential, and a pool would
