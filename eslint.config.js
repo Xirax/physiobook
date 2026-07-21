@@ -47,6 +47,16 @@ export default tseslint.config(
     },
   },
 
+  // The db package's command-line entrypoints. `no-console` exists to keep
+  // stray debug output out of request handlers; for a script a human runs from
+  // a terminal, stdout is the entire user interface.
+  {
+    files: ['db/src/migrate.ts', 'db/src/seed.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+
   // The frontend runs in the browser, not Node.
   {
     files: ['frontend/**/*.{ts,tsx}'],

@@ -3,7 +3,7 @@
 **Type:** Monorepo
 **Package manager / workspaces:** pnpm workspaces _(decided — pinned via `packageManager`; fast, strict, first-class monorepo support)_
 **Optional task runner:** Turborepo _(for cached, parallel `build`/`test`/`lint` across packages — add when the repo grows)_
-**Last updated:** 2026-07-20
+**Last updated:** 2026-07-21
 
 ---
 
@@ -132,9 +132,12 @@ backend/
 ├── tests/
 │   ├── helpers/
 │   │   ├── test-app.ts       # builds Fastify app for `.inject()`
-│   │   └── test-db.ts        # Testcontainers: boot Postgres once → load init.sql → migrate a template → clone per test
+│   │   ├── global-setup.ts   # Vitest globalSetup: boot Postgres once → load init.sql → migrate a template
+│   │   ├── test-db.ts        # clones that template into a fresh DB per test file
+│   │   └── postgres-uri.ts   # retargets a connection URI at another database
 │   ├── db/
-│   │   └── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
+│   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
+│   │   └── test-database.test.ts        # proves the harness migrates and isolates
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
@@ -143,7 +146,7 @@ backend/
 ```
 
 - **Route/service tests** are co-located per module (`*.test.ts`) and use Fastify `.inject()`.
-- **DB-backed and race tests** use the `tests/helpers/test-db.ts` Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path.
+- **DB-backed and race tests** use the Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path. `global-setup.ts` boots **one** container per run and leaves a **template database** behind (init.sql applied, migrations applied via the `db` package's own runner); `createTestDatabase()` clones it per test file, which costs milliseconds instead of a container boot. Because the setup is unconditional, **any** backend test run needs Docker — including one that only touches unit tests.
 - The **auth plugin** does a per-request session lookup so `/auth/logout` (which revokes the session) takes effect immediately, killing even a still-valid 15-min access token.
 - The **pg-boss worker** is a separate process (`jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker.
 
@@ -159,16 +162,22 @@ db/
 │   │   ├── sessions.ts       # login sessions (id, user_id, expires_at, revoked_at) — backs refresh/logout
 │   │   ├── appointments.ts   # incl. unique + EXCLUDE (btree_gist) constraints
 │   │   ├── availability.ts   # business hours + time off
-│   │   └── index.ts          # re-exports all tables
+│   │   └── index.ts          # re-exports all tables (what drizzle.config.ts reads)
 │   ├── client.ts             # creates the Drizzle client (node-postgres) from a connection string
-│   └── seed.ts               # dev/demo seed data (stub at first; grows per ticket)
-├── migrations/               # generated SQL migrations (Drizzle Kit)
-├── drizzle.config.ts         # Drizzle Kit config (schema path, out dir, dialect)
+│   ├── migrate.ts            # migration runner: `db:migrate` CLI + runMigrations() for the test harness
+│   ├── env.ts                # DATABASE_URL resolution — for the CLI scripts only
+│   ├── seed.ts               # dev/demo seed data (stub at first; grows per ticket)
+│   └── index.ts              # package barrel: schema + client + migration runner
+├── migrations/               # generated SQL migrations (Drizzle Kit) + meta/_journal.json
+├── drizzle.config.ts         # Drizzle Kit config (schema path, out dir, dialect, casing)
 ├── tsconfig.json
 └── package.json              # scripts: db:generate, db:migrate, db:seed
 ```
 
 - `backend` and the test harness both import the Drizzle client and schema from this package — one source of truth for the data model.
+- **One migration runner, two callers.** `pnpm db:migrate` and the Testcontainers harness both call `runMigrations()`; a test database built by a different code path than production would stop proving anything about production the first time the two drifted. Root passthroughs (`pnpm db:generate` / `db:migrate` / `db:seed`) run in this package.
+- **Column naming is `casing: 'snake_case'`**, set in _both_ `drizzle.config.ts` (which generates the SQL) and `src/client.ts` (which builds queries at runtime). The two never read one config, and a mismatch surfaces only as a "column does not exist" at query time.
+- **`push` is never used** — it mutates a database without leaving a migration behind, so the schema in git would stop describing what is deployed.
 - **Extensions** (`btree_gist` for the overlap `EXCLUDE` constraint, `citext` for case-insensitive email) are enabled **only** in `docker/postgres/init.sql`. That single file is loaded by both the compose Postgres and the Testcontainers helper; **no migration enables an extension**. At the DB scaffold stage there are zero migrations — the first schema migration is the `users` table.
 - A reusable `set_updated_at()` trigger function is created once (in the first migration that needs it); every table attaches its own trigger to keep `updated_at` current at the database level.
 
