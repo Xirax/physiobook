@@ -55,3 +55,22 @@ export function requireDatabaseUrl(): string {
 
   return url;
 }
+
+/**
+ * The password hash for the default admin, for `db:migrate` to hand to the
+ * `users` data migration.
+ *
+ * Optional, and deliberately not defaulted here: the fallback is the
+ * development hash committed in the migration itself, so the "unset" case has
+ * to stay distinguishable all the way to the caller that warns about it.
+ *
+ * An empty value is treated as unset — an exported-but-blank variable is a
+ * misconfiguration, and inserting an empty hash would create an admin no
+ * password can ever match.
+ */
+export function optionalAdminPasswordHash(): string | undefined {
+  loadRootEnv();
+
+  const hash = process.env['ADMIN_PASSWORD_HASH'];
+  return hash === undefined || hash === '' ? undefined : hash;
+}
