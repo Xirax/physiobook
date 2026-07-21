@@ -1,6 +1,6 @@
 import { defineConfig } from 'drizzle-kit';
 
-import { loadRootEnv } from './src/env.js';
+import { loadRootEnv, requireDatabaseUrl } from './src/env.js';
 
 /**
  * Drizzle Kit config — `db:generate` (diff the schema into SQL) and the
@@ -12,6 +12,22 @@ import { loadRootEnv } from './src/env.js';
  */
 
 loadRootEnv();
+
+/**
+ * The drizzle-kit subcommands that open a connection. `generate` is absent on
+ * purpose — it diffs the schema offline and must keep working on a machine with
+ * no database at all.
+ */
+const DATABASE_COMMANDS = new Set(['push', 'pull', 'studio', 'migrate']);
+
+/**
+ * drizzle-kit evaluates this config in its own process, so argv[2] is the
+ * subcommand being run. Read only to decide *when* to demand a URL, and
+ * deliberately permissive when it does not match: an unrecognised argv falls
+ * back to the old behaviour (a driver-level error from the command itself)
+ * rather than refusing to run a command that never needed a database.
+ */
+const needsDatabase = DATABASE_COMMANDS.has(process.argv[2] ?? '');
 
 export default defineConfig({
   dialect: 'postgresql',
@@ -26,9 +42,11 @@ export default defineConfig({
   // runtime client in src/client.ts sets the same option — see the note there.
   casing: 'snake_case',
 
-  // Only the commands that connect need this. `generate` is offline, so a
-  // missing DATABASE_URL must not throw here: it would break schema generation
-  // on a machine that has no database at all. The empty string turns "not
-  // configured" into an error from the command that actually needs a database.
-  dbCredentials: { url: process.env['DATABASE_URL'] ?? '' },
+  // Demanded only by the commands that connect, so an unconfigured machine can
+  // still run `generate` — and so the ones that do connect fail with the reason
+  // ("DATABASE_URL is not set, copy .env.example") instead of the driver's
+  // parse error on an empty string.
+  dbCredentials: {
+    url: needsDatabase ? requireDatabaseUrl() : (process.env['DATABASE_URL'] ?? ''),
+  },
 });
