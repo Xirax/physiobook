@@ -1,27 +1,34 @@
-import { describe, expect, it } from 'vitest';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { buildServer } from './server.js';
+import { buildTestApp } from '../tests/helpers/test-app.js';
+import { createTestDatabase, type TestDatabase } from '../tests/helpers/test-db.js';
 
-/**
- * Unit/route test for the server scaffold (ticket 0.3).
- *
- * Uses Fastify `.inject()` — no port is ever bound, so this runs in
- * milliseconds and cannot collide with a dev server or another test.
- */
 describe('buildServer', () => {
+  let database: TestDatabase;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    database = await createTestDatabase();
+    app = await buildTestApp({ databaseUrl: database.connectionString });
+  });
+
+  afterAll(async () => {
+    await app?.close();
+    await database?.drop();
+  });
+
   it('serves a liveness response on /health', async () => {
-    const app = buildServer({ logger: false });
+    const response = await app.inject({ method: 'GET', url: '/health' });
 
-    try {
-      const response = await app.inject({ method: 'GET', url: '/health' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: 'ok' });
+  });
 
-      expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ status: 'ok' });
-    } finally {
-      // In a `finally` so a failed assertion still releases the instance;
-      // otherwise the first failure leaves a handle open and Vitest hangs at
-      // the end of the run instead of reporting the failure.
-      await app.close();
-    }
+  it('decorates the instance with the Drizzle client', async () => {
+    expect(app.db).toBeDefined();
+
+    const result = await app.db.execute('SELECT 1 AS one');
+    expect(result.rows[0]).toEqual({ one: 1 });
   });
 });

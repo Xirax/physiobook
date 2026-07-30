@@ -3,7 +3,7 @@
 **Type:** Monorepo
 **Package manager / workspaces:** pnpm workspaces _(decided — pinned via `packageManager`; fast, strict, first-class monorepo support)_
 **Optional task runner:** Turborepo _(for cached, parallel `build`/`test`/`lint` across packages — add when the repo grows)_
-**Last updated:** 2026-07-21
+**Last updated:** 2026-07-29 (E1.2)
 
 ---
 
@@ -108,7 +108,8 @@ backend/
 │   ├── plugins/              # Fastify plugins (auth, cookie, cors, error handler)
 │   │   ├── auth.ts           # verify access JWT + per-request session revocation check; requireAuth / requireRole
 │   │   ├── cookie.ts         # @fastify/cookie (httpOnly refresh cookie)
-│   │   └── db.ts             # Drizzle client (node-postgres) decorated onto Fastify
+│   │   ├── db.ts             # Drizzle client (node-postgres) decorated onto Fastify
+│   │   └── error-handler.ts  # every failure → one `{ code, message }` body; 404 handler too
 │   ├── lib/
 │   │   └── tokens.ts         # shared JWT sign/verify util (sub, role, session_id, exp)
 │   ├── modules/              # one folder per domain area
@@ -149,6 +150,8 @@ backend/
 - **Route/service tests** are co-located per module (`*.test.ts`) and use Fastify `.inject()`.
 - **DB-backed and race tests** use the Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path. `global-setup.ts` boots **one** container per run and leaves a **template database** behind (init.sql applied, migrations applied via the `db` package's own runner); `createTestDatabase()` clones it per test file, which costs milliseconds instead of a container boot. Because the setup is unconditional, **any** backend test run needs Docker — including one that only touches unit tests.
 - The **auth plugin** does a per-request session lookup so `/auth/logout` (which revokes the session) takes effect immediately, killing even a still-valid 15-min access token.
+- **`buildServer()` takes everything it needs as options** (database URL, JWT secret, TTL, clock) and reads no environment itself. `index.ts` parses and validates the environment once via `config/env.ts` and hands the result down; `tests/helpers/test-app.ts` passes a throwaway container and a fixed secret to the **same** builder, so no test exercises a special-cased app.
+- **`error-handler.ts` is registered before the routes**, and its first branch handles a thrown non-object. That ordering is load-bearing: `hasZodFastifySchemaValidationErrors` narrows with the `in` operator, which raises a `TypeError` on a primitive — and a `TypeError` raised inside an error handler is not caught by it, so Fastify would answer in its own default shape with an internal message attached.
 - The **pg-boss worker** is a separate process (`jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker.
 
 ---
@@ -170,12 +173,30 @@ db/
 │   ├── seed.ts               # dev/demo seed data (stub at first; grows per ticket)
 │   └── index.ts              # package barrel: schema + client + migration runner
 ├── migrations/               # generated SQL migrations (Drizzle Kit) + meta/_journal.json
+├── dist/                     # built output, git-ignored — see "Two entrypoints" below
 ├── drizzle.config.ts         # Drizzle Kit config (schema path, out dir, dialect, casing)
 ├── tsconfig.json
-└── package.json              # scripts: db:generate, db:migrate, db:seed
+├── tsconfig.build.json       # emit config (dist/ + declarations)
+└── package.json              # scripts: build, db:generate, db:migrate, db:seed
 ```
 
 - `backend` and the test harness both import the Drizzle client and schema from this package — one source of truth for the data model.
+- **Two entrypoints, one source (added E1.2, applies equally to `shared/`).** Both packages are consumed as raw TypeScript during development and as compiled JavaScript in production, via conditional `exports`:
+
+  ```jsonc
+  "exports": { ".": {
+    "types":       "./src/index.ts",   // tsc — typecheck without a build
+    "development": "./src/index.ts",   // Vitest + tsx — no build in the inner loop
+    "default":     "./dist/index.js",  // node dist/index.js in the runtime image
+  } }
+  ```
+
+  The production image has no TypeScript loader, so a bare `import from '@physiobook/db'` resolving to a `.ts` file dies at boot with `ERR_UNKNOWN_FILE_EXTENSION`. The `default` branch is what fixes that; the other two are what stop the fix from costing a build step on every test run — and what keeps coverage measuring `src/`, not `dist/`. Consequences worth not rediscovering:
+
+  - `backend/vitest.config.ts` sets `resolve.conditions: ['development']`, and the backend's `dev` script passes `--conditions development` to tsx. **The flag must come after `watch`** (`tsx watch --conditions development src/index.ts`) — put it first and tsx takes `watch` for the entry filename.
+  - `docker/backend.Dockerfile` builds with `pnpm --filter @physiobook/backend... build` (the `...` pulls in both dependencies) and copies each package's `dist/` **and** its `package.json` into the runtime stage. pnpm links these packages as symlinks, so a directory holding only a manifest resolves to an entrypoint that is not there.
+  - `dist/` is git-ignored. Nothing in the repo reads it except the production image.
+
 - **One migration runner, two callers.** `pnpm db:migrate` and the Testcontainers harness both call `runMigrations()`; a test database built by a different code path than production would stop proving anything about production the first time the two drifted. Root passthroughs (`pnpm db:generate` / `db:migrate` / `db:seed`) run in this package.
 - **Column naming is `casing: 'snake_case'`**, set in _both_ `drizzle.config.ts` (which generates the SQL) and `src/client.ts` (which builds queries at runtime). The two never read one config, and a mismatch surfaces only as a "column does not exist" at query time.
 - **`push` is never used** — it mutates a database without leaving a migration behind, so the schema in git would stop describing what is deployed.
@@ -195,14 +216,21 @@ shared/
 │   ├── schemas/              # Zod schemas for requests & responses
 │   │   ├── appointment.ts
 │   │   ├── availability.ts
-│   │   └── auth.ts           # register/login payloads (password min 8 / max 72 bytes for bcrypt)
+│   │   ├── auth.ts           # register/login payloads (password min 8 / max 72 bytes for bcrypt)
+│   │   └── error.ts          # the one error body: { code, message, details? } + the closed code list
 │   ├── types/                # types inferred from the schemas
 │   └── index.ts
+├── dist/                     # built output, git-ignored (see §5, "Two entrypoints")
 ├── tsconfig.json
+├── tsconfig.build.json
 └── package.json
 ```
 
 - Backend validates incoming requests with these schemas; frontend imports the inferred types **and validates forms with the same schemas**. Define once, consumed both sides.
+- **Field naming is `snake_case` across the whole contract** (`full_name`, `created_at`). The registration payload the API accepts is `full_name`, so responses match rather than switching convention halfway through — a form schema and the response type it populates must not disagree about a field's name. Drizzle's camelCase rows stop at the service boundary, which maps them onto these shapes field by field.
+- **This package must compile for the browser as well as Node**, so its `lib` is `ES2023` and nothing more. No `TextEncoder`, no `Buffer`, no DOM — `auth.ts` counts UTF-8 bytes by hand for exactly this reason.
+- Requests are validated with `z.strictObject`, so an unknown field is a 400 rather than something silently dropped. That is what makes a client-supplied `role` visible instead of merely ineffective.
+- **Known deviation from the E1.2 ticket (flagged, not silent — CLAUDE.md §4).** That ticket's acceptance criteria say a client-supplied `role` is _ignored_, i.e. `{ …, role: 'admin' }` still returns 201. `strictObject` answers 400 instead. The two rules genuinely conflict: REVIEWER.md §4 and BACKEND_DEV.md §2 require unknown fields to be rejected. Rejection was chosen — no escalation is possible either way, so the AC's intent holds, and the alternative would make every mistyped field across the API silently ignored. If a future ticket wants the literal behaviour, it changes this schema deliberately rather than discovering the difference in a test.
 
 ---
 
@@ -271,6 +299,7 @@ Runs on every push / PR (`ubuntu-latest`), in order, failing fast:
 - **Turborepo:** optional and additive — introduce it when build/test times justify caching.
 - **Frontend in prod:** for a portfolio, serving the built static assets (via the frontend container or a CDN) is enough; no SSR needed.
 - **Post-MVP hardening (deferred by decision):** password-change flow, stateful refresh-token revocation / "log out everywhere", registration rate-limiting, and email verification. Session revocation for the _current_ session (logout) is already instant via the per-request check.
+- **Registration rate-limiting is the one item above that E1.2 explicitly did not add**, even though BACKEND_DEV.md §8 asks for rate limits on auth endpoints — it is listed as deferred here. `POST /auth/register` is therefore unthrottled, and bcrypt at cost 12 makes each call ~250 ms of CPU, so it is the cheapest denial-of-service target in the app. Worth doing before anything is exposed publicly.
 
 ```
 

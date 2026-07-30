@@ -89,6 +89,18 @@ frontend/src/
 
 ---
 
+## 9a. Comments — write few
+
+Clean code explains itself. A comment is a cost: it is unversioned by the compiler, it rots the moment the code beside it changes, and a wall of them buries the one remark that mattered.
+
+- **Default to none.** Prefer a clearer name, a smaller component, or an extracted constant over a sentence explaining the unclear version.
+- **Never narrate the code.** If the comment restates what the line does, delete it.
+- **Comment only what the code cannot say:** a non-obvious _why_, a deliberate deviation from a ticket or doc, a workaround for a browser/library bug (with a link), or an accessibility or effect-ordering constraint a future reader would otherwise "simplify" away.
+- **Prose belongs in docs.** Design rationale and trade-offs go in `PROJECT_STRUCTURE.md` or the PR description — not in a header block above every component.
+- Tests follow the same rule: a precise `it(...)` name replaces most comments.
+
+---
+
 ## 10. Definition of Done (frontend)
 
 Acceptance criteria met · types imported from `shared/` (no redefinition) · all data access through `api-client` · loading/empty/error states handled · `409`/conflict path handled and tested · accessible and keyboard-operable · RTL tests co-located and green · relevant Playwright E2E green · lint + typecheck clean · coverage gate passing.

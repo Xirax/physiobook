@@ -86,6 +86,11 @@ services:
       # variable points at localhost for host-side tools, which inside this
       # container would mean the container itself.
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Signing key for access tokens (E1.2). No default, like every other value
+      # here: backend/src/config/env.ts refuses to boot without it, and a
+      # compose-level fallback would quietly hand every deployment the same one.
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
     ports:
