@@ -1,0 +1,21 @@
+{
+  // Emit config for the JavaScript consumers of this package (ticket E1.2).
+  //
+  // Nothing in the repo *reads* dist/ during development: the `types` and
+  // `development` export conditions both point at src/, so tsc, Vitest and tsx
+  // all see the TypeScript. dist/ exists for the one consumer that cannot —
+  // plain `node dist/index.js` in the backend's production image, which has no
+  // TypeScript loader and would otherwise be handed a .ts file
+  // (ERR_UNKNOWN_FILE_EXTENSION).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    // Emitted even though the `types` condition wins everywhere in this repo:
+    // a dist/ that describes itself is what stops a future consumer resolving
+    // to compiled JavaScript with no types at all.
+    "declaration": true
+  },
+  "include": ["src"]
+}

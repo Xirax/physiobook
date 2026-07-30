@@ -41,6 +41,7 @@ Appointment-specific data (which user, status history) lives in an **`appointmen
 - `updated_at` is maintained by a `BEFORE UPDATE` trigger on the shared `set_updated_at()` function, so it is correct for every writer including hand-typed SQL.
 - The **default admin** (`admin@physiobook.local`) is inserted by a **data migration**, not by `db:seed`: there is no admin-registration route, so an install without it cannot grow one.
 - That admin's **password hash comes from `ADMIN_PASSWORD_HASH`** (via the `physiobook.admin_password_hash` run-time parameter, which is how a value reaches a `.sql` file the migrator runs verbatim). Unset, it falls back to a hash committed in the migration whose password is public — fine for a throwaway local database, and `db:migrate` warns whenever it takes that path. Read only on the first apply, since the insert is `ON CONFLICT DO NOTHING`.
+- **The `NOTE:` in `0001_users_updated_at_and_admin.sql` is discharged** (E1.2). It asked that, once the repo gained a password-hashing library, the fallback hash be asserted against the plaintext its comment documents — `backend/tests/db/users.test.ts` now does exactly that (`bcrypt.compare('ChangeMe123!', …)`, plus a cost-12 check). Recorded here rather than by editing that comment: the migration has been applied and its SHA-256 is stored in `__drizzle_migrations.hash`, so the file is immutable (BACKEND_DEV.md §3) even for a comment-only change.
 
 ---
 

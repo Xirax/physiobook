@@ -64,11 +64,15 @@ export default defineConfig({
       // should not chase them: the migration runner executes in Vitest's
       // globalSetup, which the provider does not instrument, and seed.ts is a
       // dev/demo script no test may depend on.
-      include: ['backend/src/**/*.ts', 'db/src/**/*.ts'],
+      include: ['backend/src/**/*.ts', 'db/src/**/*.ts', 'shared/src/**/*.ts'],
       exclude: [
         // Boots the server and listens; it is exercised by the docker smoke
         // workflow and, from E7, by Playwright — never by a unit test.
         'backend/src/index.ts',
+        // Test files are co-located with the code they cover (PROJECT_STRUCTURE.md
+        // §4). `all: true` would otherwise report the suite's own coverage of
+        // itself, inflating every number with files that are 100% by definition.
+        '**/*.test.ts',
       ],
 
       thresholds: {

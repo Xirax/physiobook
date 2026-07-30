@@ -1,0 +1,16 @@
+{
+  // Emit config for the JavaScript consumers of this package (ticket E1.2).
+  // See shared/tsconfig.build.json — same reasoning, same shape.
+  //
+  // `drizzle.config.ts` is deliberately outside `include` here: it is drizzle-kit
+  // input, not part of the package's runtime surface, and it would land in dist/
+  // as a file nothing imports.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true
+  },
+  "include": ["src"]
+}

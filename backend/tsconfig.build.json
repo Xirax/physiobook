@@ -13,5 +13,10 @@
     // the sources if stack traces ever need to be readable in a deployed
     // container.
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Route tests are co-located in src/ (PROJECT_STRUCTURE.md §4) but are not
+  // part of the image: they would ship to production as dead files, and they
+  // import the harness under tests/, which is outside `rootDir` and would fail
+  // the build outright.
+  "exclude": ["**/*.test.ts"]
 }

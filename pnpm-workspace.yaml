@@ -12,6 +12,14 @@ allowBuilds:
   # without it Vite cannot start at all.
   esbuild: true
 
+  # Password hashing (E1.2). bcrypt 6 is built with `prebuildify --napi
+  # --tag-libc`, so the published tarball already carries binaries for every
+  # platform this repo runs on — including musl, which is what lets the
+  # node:22-alpine runtime image work without a compiler toolchain. Its install
+  # script is `node-gyp-build`, which only *selects* one of those prebuilds;
+  # denying it would leave the module unloadable rather than merely unoptimised.
+  bcrypt: true
+
   # The three below arrive under testcontainers → dockerode → ssh2. Their build
   # scripts only compile optional native speedups for SSH transport, which we
   # never use: Testcontainers talks to the local Docker daemon over a socket or

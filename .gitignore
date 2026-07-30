@@ -42,6 +42,15 @@ build/Release
 node_modules/
 jspm_packages/
 
+# pnpm's content-addressed store, when it lands inside the repo.
+# pnpm keeps the store on the same volume as the project so it can hardlink
+# instead of copy; on a dev machine whose checkout is not on the system drive
+# (the primary host here is Windows with the repo on F:) that means a
+# .pnpm-store/ appears at the root after the first install. Machine-local cache,
+# never committed — and ignored by Prettier too, since globbing a live store
+# races its SQLite WAL files.
+.pnpm-store/
+
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
 

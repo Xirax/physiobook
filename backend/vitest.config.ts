@@ -9,6 +9,19 @@ import { defineConfig } from 'vitest/config';
  * while writing backend code.
  */
 export default defineConfig({
+  // `@physiobook/shared` and `@physiobook/db` expose conditional exports: the
+  // `development` condition points at their TypeScript source, everything else
+  // at the `dist/` the production image runs (ticket E1.2). Naming it here is
+  // what keeps the test loop build-free — without it Vitest would resolve
+  // `default`, and every run would test stale compiled output, or fail outright
+  // because nobody built it.
+  //
+  // It is also what makes coverage honest: the `db/src/**` rows in the root
+  // config measure the source these tests actually executed.
+  resolve: {
+    conditions: ['development'],
+  },
+
   test: {
     name: 'backend',
     environment: 'node',

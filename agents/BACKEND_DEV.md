@@ -84,6 +84,18 @@ Cross-cutting concerns are **Fastify plugins** (`src/plugins/`): `auth` (JWT ver
 
 ---
 
+## 8a. Comments — write few
+
+Clean code explains itself. A comment is a cost: it is unversioned by the compiler, it rots the moment the code beside it changes, and a wall of them buries the one remark that mattered.
+
+- **Default to none.** Prefer a clearer name, a smaller function, or an extracted constant over a sentence explaining the unclear version.
+- **Never narrate the code.** If the comment restates what the line does, delete it.
+- **Comment only what the code cannot say:** a non-obvious _why_, a deliberate deviation from a ticket or doc, a workaround for an external bug (with a link), or a correctness invariant a future reader would otherwise "simplify" away.
+- **Prose belongs in docs.** Design rationale, trade-offs and decisions go in `PROJECT_STRUCTURE.md`/`SCHEMA.md` or the PR description — not in a header block above every export.
+- Tests follow the same rule: a precise `it(...)` name replaces most comments.
+
+---
+
 ## 9. Errors & logging
 
 - Use typed domain errors (`lib/errors.ts`) mapped to HTTP status by a central error handler. No leaking stack traces or driver messages to clients.
