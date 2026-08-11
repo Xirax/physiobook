@@ -19,7 +19,12 @@ describe('RegisterUser, when the database itself fails', () => {
   const register = () =>
     registerUser(
       { email: 'ada@example.com', password: 'correct-horse-battery', full_name: 'Ada Lovelace' },
-      { db: database.db, jwtSecret: 'a-test-secret-long-enough-for-hs256', jwtTtlSeconds: 900 },
+      {
+        db: database.db,
+        jwtSecret: 'a-test-secret-long-enough-for-hs256',
+        jwtTtlSeconds: 900,
+        refreshTtlSeconds: 604_800,
+      },
     );
 
   it('Does not mistake an unrelated failure for a taken email', async () => {

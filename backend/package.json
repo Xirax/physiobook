@@ -14,6 +14,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/rate-limit": "^11.2.0",
     "@physiobook/db": "workspace:*",
     "@physiobook/shared": "workspace:*",
     "bcrypt": "^6.0.0",

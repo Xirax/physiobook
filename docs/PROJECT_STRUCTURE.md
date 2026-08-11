@@ -3,7 +3,7 @@
 **Type:** Monorepo
 **Package manager / workspaces:** pnpm workspaces _(decided — pinned via `packageManager`; fast, strict, first-class monorepo support)_
 **Optional task runner:** Turborepo _(for cached, parallel `build`/`test`/`lint` across packages — add when the repo grows)_
-**Last updated:** 2026-07-29 (E1.2)
+**Last updated:** 2026-08-11 (E1.3)
 
 ---
 
@@ -104,19 +104,22 @@ backend/
 │   ├── server.ts             # builds & configures the Fastify instance
 │   ├── index.ts              # boots the server (listen)
 │   ├── config/
-│   │   └── env.ts            # loads + validates env with Zod (incl. JWT_SECRET, JWT_REFRESH_SECRET)
-│   ├── plugins/              # Fastify plugins (auth, cookie, cors, error handler)
+│   │   └── env.ts            # loads + validates env with Zod (JWT_SECRET, REFRESH_TTL_SECONDS, TRUST_PROXY)
+│   ├── plugins/              # Fastify plugins (auth, cookie, rate-limit, cors, error handler)
 │   │   ├── auth.ts           # verify access JWT + per-request session revocation check; requireAuth / requireRole
-│   │   ├── cookie.ts         # @fastify/cookie (httpOnly refresh cookie)
+│   │   ├── cookie.ts         # @fastify/cookie + the one definition of the refresh cookie's attributes
+│   │   ├── rate-limit.ts     # @fastify/rate-limit, opt-in per route; 429 → the standard error body
 │   │   ├── db.ts             # Drizzle client (node-postgres) decorated onto Fastify
 │   │   └── error-handler.ts  # every failure → one `{ code, message }` body; 404 handler too
 │   ├── lib/
-│   │   └── tokens.ts         # shared JWT sign/verify util (sub, role, session_id, exp)
+│   │   ├── tokens.ts         # shared JWT sign/verify util (sub, role, session_id, exp)
+│   │   └── refresh-token.ts  # mint/parse/hash the opaque refresh cookie value
 │   ├── modules/              # one folder per domain area
 │   │   ├── auth/
 │   │   │   ├── auth.routes.ts    # register, login, refresh, logout
 │   │   │   ├── auth.service.ts   # bcrypt, session create/revoke, token issue
-│   │   │   └── auth.test.ts
+│   │   │   ├── auth.test.ts      # POST /auth/register
+│   │   │   └── auth.login.test.ts  # POST /auth/login
 │   │   ├── appointments/
 │   │   │   ├── appointments.routes.ts
 │   │   │   ├── appointments.service.ts      # booking, cancel, race handling
@@ -139,7 +142,8 @@ backend/
 │   ├── db/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   │   ├── test-database.test.ts        # proves the harness migrates and isolates
-│   │   └── users.test.ts                # citext email, single-admin index, updated_at trigger
+│   │   ├── users.test.ts                # citext email, single-admin index, updated_at trigger
+│   │   └── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
@@ -150,7 +154,9 @@ backend/
 - **Route/service tests** are co-located per module (`*.test.ts`) and use Fastify `.inject()`.
 - **DB-backed and race tests** use the Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path. `global-setup.ts` boots **one** container per run and leaves a **template database** behind (init.sql applied, migrations applied via the `db` package's own runner); `createTestDatabase()` clones it per test file, which costs milliseconds instead of a container boot. Because the setup is unconditional, **any** backend test run needs Docker — including one that only touches unit tests.
 - The **auth plugin** does a per-request session lookup so `/auth/logout` (which revokes the session) takes effect immediately, killing even a still-valid 15-min access token.
-- **`buildServer()` takes everything it needs as options** (database URL, JWT secret, TTL, clock) and reads no environment itself. `index.ts` parses and validates the environment once via `config/env.ts` and hands the result down; `tests/helpers/test-app.ts` passes a throwaway container and a fixed secret to the **same** builder, so no test exercises a special-cased app.
+- **Auth issues tokens from one place (E1.3).** `startSession()` in `auth.service.ts` writes the `sessions` row, signs the access token carrying its `session_id`, and returns the refresh cookie's value; the route sets the cookie and never sees the attributes. Both `/auth/register` and `/auth/login` go through it, so there is no path that mints a token no session backs — see SCHEMA.md §2.2 for why that matters. `POST /auth/login` answers **201**, not 200: it creates a session, and the ticket names the status explicitly.
+- **The rate limiter is opt-in per route** (`config: RATE_LIMITED_ROUTE`), registered with `global: false` and before the routes — its `onRoute` hook only sees what is registered after it. Auth endpoints are limited because login costs ~250 ms of bcrypt; reads that are legitimately bursty are not. Keying is by client address only: adding the email to the key would let anyone lock a known address out of its own account. What counts as the client address is a deployment question, answered by `TRUST_PROXY` — see §10.
+- **`buildServer()` takes everything it needs as options** (database URL, JWT secret, TTLs, cookie `Secure` flag, rate limit, clock) and reads no environment itself. `secureCookies` and `trustProxy` are options for exactly this reason: "Secure in prod" and "who is in front of us" are environment questions, and `index.ts` answers both from validated env so the builder stays the same one the tests use. `index.ts` parses and validates the environment once via `config/env.ts` and hands the result down; `tests/helpers/test-app.ts` passes a throwaway container and a fixed secret to the **same** builder, so no test exercises a special-cased app.
 - **`error-handler.ts` is registered before the routes**, and its first branch handles a thrown non-object. That ordering is load-bearing: `hasZodFastifySchemaValidationErrors` narrows with the `in` operator, which raises a `TypeError` on a primitive — and a `TypeError` raised inside an error handler is not caught by it, so Fastify would answer in its own default shape with an internal message attached.
 - The **pg-boss worker** is a separate process (`jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker.
 
@@ -163,7 +169,7 @@ db/
 ├── src/
 │   ├── schema/               # Drizzle table definitions
 │   │   ├── users.ts          # uuid pk, citext email, role enum, single-admin partial index
-│   │   ├── sessions.ts       # login sessions (id, user_id, expires_at, revoked_at) — backs refresh/logout
+│   │   ├── sessions.ts       # login sessions (id, user_id, token_hash, expires_at, revoked_at) — backs refresh/logout
 │   │   ├── appointments.ts   # incl. unique + EXCLUDE (btree_gist) constraints
 │   │   ├── availability.ts   # business hours + time off
 │   │   └── index.ts          # re-exports all tables (what drizzle.config.ts reads)
@@ -216,7 +222,7 @@ shared/
 │   ├── schemas/              # Zod schemas for requests & responses
 │   │   ├── appointment.ts
 │   │   ├── availability.ts
-│   │   ├── auth.ts           # register/login payloads (password min 8 / max 72 bytes for bcrypt)
+│   │   ├── auth.ts           # register/login payloads (register: password min 8 / max 72 bytes for bcrypt)
 │   │   └── error.ts          # the one error body: { code, message, details? } + the closed code list
 │   ├── types/                # types inferred from the schemas
 │   └── index.ts
@@ -230,6 +236,7 @@ shared/
 - **Field naming is `snake_case` across the whole contract** (`full_name`, `created_at`). The registration payload the API accepts is `full_name`, so responses match rather than switching convention halfway through — a form schema and the response type it populates must not disagree about a field's name. Drizzle's camelCase rows stop at the service boundary, which maps them onto these shapes field by field.
 - **This package must compile for the browser as well as Node**, so its `lib` is `ES2023` and nothing more. No `TextEncoder`, no `Buffer`, no DOM — `auth.ts` counts UTF-8 bytes by hand for exactly this reason.
 - Requests are validated with `z.strictObject`, so an unknown field is a 400 rather than something silently dropped. That is what makes a client-supplied `role` visible instead of merely ineffective.
+- **Login does not reuse the registration password schema (E1.3).** `loginRequestSchema` bounds the field but states no policy. Restating the 8–72-byte rule there would answer 400 where the ticket requires one indistinguishable 401 — a short password would then look different from a wrong one — and would lock out any account whose password predates a future tightening.
 - **Known deviation from the E1.2 ticket (flagged, not silent — CLAUDE.md §4).** That ticket's acceptance criteria say a client-supplied `role` is _ignored_, i.e. `{ …, role: 'admin' }` still returns 201. `strictObject` answers 400 instead. The two rules genuinely conflict: REVIEWER.md §4 and BACKEND_DEV.md §2 require unknown fields to be rejected. Rejection was chosen — no escalation is possible either way, so the AC's intent holds, and the alternative would make every mistyped field across the API silently ignored. If a future ticket wants the literal behaviour, it changes this schema deliberately rather than discovering the difference in a test.
 
 ---
@@ -298,8 +305,11 @@ Runs on every push / PR (`ubuntu-latest`), in order, failing fast:
 
 - **Turborepo:** optional and additive — introduce it when build/test times justify caching.
 - **Frontend in prod:** for a portfolio, serving the built static assets (via the frontend container or a CDN) is enough; no SSR needed.
-- **Post-MVP hardening (deferred by decision):** password-change flow, stateful refresh-token revocation / "log out everywhere", registration rate-limiting, and email verification. Session revocation for the _current_ session (logout) is already instant via the per-request check.
-- **Registration rate-limiting is the one item above that E1.2 explicitly did not add**, even though BACKEND_DEV.md §8 asks for rate limits on auth endpoints — it is listed as deferred here. `POST /auth/register` is therefore unthrottled, and bcrypt at cost 12 makes each call ~250 ms of CPU, so it is the cheapest denial-of-service target in the app. Worth doing before anything is exposed publicly.
+- **Post-MVP hardening (deferred by decision):** password-change flow, "log out everywhere", and email verification. Session revocation for the _current_ session (logout) is already instant via the per-request check.
+- **Auth rate-limiting landed in E1.3**, closing what §10 previously recorded as deferred: `/auth/login` and `/auth/register` are limited per route, per client address, by `AUTH_RATE_LIMIT_MAX` in `AUTH_RATE_LIMIT_WINDOW_SECONDS` (10/minute by default). Two things bound how much that claim is worth, both configuration rather than code:
+  - **"Client address" means whatever `TRUST_PROXY` says it means.** Unset, it is the socket address — correct only when the app is reached directly, as it is under `docker compose up`. Put nginx, Traefik, or a load balancer in front without setting it and every request resolves to the proxy, the entire practice shares one bucket, and one noisy client locks the real user out — the control inverted into the denial of service it was added to prevent. `TRUST_PROXY` takes a hop count or a list of trusted proxy addresses; it **rejects `true`**, which would take the leftmost `X-Forwarded-For` entry — written by the client — and let an attacker present a fresh identity per request.
+  - **The store is in-memory, per process**, so N replicas mean N× the limit. Fine for one container; a shared store is the fix if the API is ever scaled out.
+- **Refresh-token rotation is not implemented.** A refresh cookie is valid, unchanged, for its whole 7 days; a stolen one therefore works until logout or expiry. Rotating on each refresh (and treating a reused old token as a compromise signal) belongs with the `/auth/refresh` endpoint that consumes it, not with the login that mints it.
 
 ```
 

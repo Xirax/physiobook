@@ -18,6 +18,18 @@ export class EmailTakenError extends DomainError {
   }
 }
 
+export class InvalidCredentialsError extends DomainError {
+  constructor() {
+    super(errorCodes.INVALID_CREDENTIALS, 401, 'Invalid email or password');
+  }
+}
+
+export class RateLimitedError extends DomainError {
+  constructor(retryAfter: string) {
+    super(errorCodes.RATE_LIMITED, 429, `Too many requests. Try again in ${retryAfter}.`);
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }

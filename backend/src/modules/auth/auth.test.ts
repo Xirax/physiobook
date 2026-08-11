@@ -1,4 +1,4 @@
-import { users } from '@physiobook/db';
+import { sessions, users } from '@physiobook/db';
 import { errorCodes, PASSWORD_MAX_BYTES, PASSWORD_MIN_BYTES } from '@physiobook/shared';
 import bcrypt from 'bcrypt';
 import { eq } from 'drizzle-orm';
@@ -12,6 +12,7 @@ import {
 } from '../../../tests/helpers/test-app.js';
 import { createTestDatabase, type TestDatabase } from '../../../tests/helpers/test-db.js';
 import { verifyAccessToken } from '../../lib/tokens.js';
+import { REFRESH_COOKIE_NAME, REFRESH_COOKIE_PATH } from '../../plugins/cookie.js';
 
 describe('POST /auth/register', () => {
   let database: TestDatabase;
@@ -65,6 +66,25 @@ describe('POST /auth/register', () => {
       expect(claims.role).toBe('user');
       expect(claims.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
       expect(claims.exp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + 900);
+    });
+
+    it('Logs the new user in: one session, and a token that names it', async () => {
+      const response = await register({ ...validPayload, email: 'session@example.com' });
+      const { user, token } = response.json();
+
+      const rows = await database.db.select().from(sessions).where(eq(sessions.userId, user.id));
+
+      expect(rows).toHaveLength(1);
+      expect(verifyAccessToken(token, TEST_JWT_SECRET).session_id).toBe(rows[0]?.id);
+    });
+
+    it('Sets the same refresh cookie a login would', async () => {
+      const response = await register({ ...validPayload, email: 'cookie@example.com' });
+      const cookie = response.cookies.find((each) => each.name === REFRESH_COOKIE_NAME);
+
+      expect(cookie?.httpOnly).toBe(true);
+      expect(cookie?.sameSite).toMatch(/strict/i);
+      expect(cookie?.path).toBe(REFRESH_COOKIE_PATH);
     });
 
     it('Never returns the password hash', async () => {

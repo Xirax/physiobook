@@ -4,9 +4,11 @@ import {
   DomainError,
   EmailTakenError,
   findDatabaseError,
+  InvalidCredentialsError,
   isDomainError,
   isPostgresError,
   PG_UNIQUE_VIOLATION,
+  RateLimitedError,
 } from './errors.js';
 
 describe('Domain errors', () => {
@@ -25,6 +27,22 @@ describe('Domain errors', () => {
   it('Reports its own subclass name', () => {
     expect(new EmailTakenError().name).toBe('EmailTakenError');
     expect(new DomainError('INTERNAL_ERROR', 500, 'boom').name).toBe('DomainError');
+  });
+
+  it('Answers a failed login with 401 and nothing about which half was wrong', () => {
+    const error = new InvalidCredentialsError();
+
+    expect(error.code).toBe('INVALID_CREDENTIALS');
+    expect(error.statusCode).toBe(401);
+    expect(error.message).not.toMatch(/@|unknown|no such|exist/i);
+  });
+
+  it('Answers a tripped rate limit with 429 and how long to wait', () => {
+    const error = new RateLimitedError('1 minute');
+
+    expect(error.code).toBe('RATE_LIMITED');
+    expect(error.statusCode).toBe(429);
+    expect(error.message).toContain('1 minute');
   });
 
   it('Does not treat an ordinary error as a domain error', () => {
