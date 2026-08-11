@@ -15,6 +15,56 @@ export const DEVELOPMENT_JWT_SECRET = 'dev-only-insecure-secret-change-me-before
 
 const BLANK_IS_INVALID = new Set(['NODE_ENV']);
 
+const trustProxySchema = z
+  .string()
+  .default('false')
+  .transform((value, ctx): boolean | number | string[] => {
+    const trimmed = value.trim().toLowerCase();
+
+    if (trimmed === '' || trimmed === 'false') return false;
+
+    if (trimmed === 'true') {
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'cannot be `true`: that trusts the leftmost X-Forwarded-For entry, which the client ' +
+          'writes, so the auth rate limit would count a new address every request. Give the ' +
+          'number of proxies in front of this app (e.g. 1), or their addresses (e.g. ' +
+          '10.0.0.0/8,loopback).',
+      });
+
+      return z.NEVER;
+    }
+
+    if (/^\d+$/.test(trimmed)) {
+      const hops = Number(trimmed);
+
+      if (hops < 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'as a hop count must be at least 1. Use `false` for no proxy at all.',
+        });
+
+        return z.NEVER;
+      }
+
+      return hops;
+    }
+
+    const addresses = trimmed
+      .split(',')
+      .map((address) => address.trim())
+      .filter((address) => address !== '');
+
+    if (addresses.length === 0) {
+      ctx.addIssue({ code: 'custom', message: 'lists no address' });
+
+      return z.NEVER;
+    }
+
+    return addresses;
+  });
+
 /**
  * docker-compose substitutes an unset `${VAR}` as the empty string, so a
  * variable nobody set arrives as `''` rather than absent — which would coerce to
@@ -51,6 +101,7 @@ export const envSchema = z.preprocess(
         .int()
         .positive()
         .default(DEFAULT_AUTH_RATE_LIMIT_WINDOW_SECONDS),
+      TRUST_PROXY: trustProxySchema,
       BACKEND_PORT: z.coerce.number().int().positive().max(65_535).default(3000),
       BACKEND_HOST: z.string().min(1).default('0.0.0.0'),
     })

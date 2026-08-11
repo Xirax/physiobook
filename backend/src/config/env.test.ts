@@ -19,6 +19,7 @@ describe('loadEnv', () => {
     expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
     expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
     expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
+    expect(env.TRUST_PROXY).toBe(false);
     expect(env.BACKEND_PORT).toBe(3000);
     expect(env.BACKEND_HOST).toBe('0.0.0.0');
   });
@@ -72,6 +73,38 @@ describe('loadEnv', () => {
 
   it('Rejects a zero rate-limit max, which would refuse every login', () => {
     expect(() => loadEnv({ ...valid, AUTH_RATE_LIMIT_MAX: '0' })).toThrow(/AUTH_RATE_LIMIT_MAX/);
+  });
+
+  describe('TRUST_PROXY, which decides what the rate limit is keyed on', () => {
+    it('Reads a hop count', () => {
+      expect(loadEnv({ ...valid, TRUST_PROXY: '2' }).TRUST_PROXY).toBe(2);
+    });
+
+    it('Reads a list of trusted proxy addresses', () => {
+      expect(loadEnv({ ...valid, TRUST_PROXY: '10.0.0.0/8, loopback' }).TRUST_PROXY).toEqual([
+        '10.0.0.0/8',
+        'loopback',
+      ]);
+    });
+
+    it('Treats an explicit false, a blank and an absent value alike', () => {
+      expect(loadEnv({ ...valid, TRUST_PROXY: 'false' }).TRUST_PROXY).toBe(false);
+      expect(loadEnv({ ...valid, TRUST_PROXY: '' }).TRUST_PROXY).toBe(false);
+      expect(loadEnv(valid).TRUST_PROXY).toBe(false);
+    });
+
+    it('Refuses `true`, which would let a client forge its own rate-limit bucket', () => {
+      expect(() => loadEnv({ ...valid, TRUST_PROXY: 'true' })).toThrow(/TRUST_PROXY/);
+      expect(() => loadEnv({ ...valid, TRUST_PROXY: 'true' })).toThrow(/X-Forwarded-For/);
+    });
+
+    it('Refuses a zero hop count, which says nothing false does not', () => {
+      expect(() => loadEnv({ ...valid, TRUST_PROXY: '0' })).toThrow(/TRUST_PROXY/);
+    });
+
+    it('Refuses a list of nothing', () => {
+      expect(() => loadEnv({ ...valid, TRUST_PROXY: ',,' })).toThrow(/TRUST_PROXY/);
+    });
   });
 
   it('Rejects an unknown NODE_ENV', () => {

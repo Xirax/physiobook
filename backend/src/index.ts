@@ -16,6 +16,7 @@ const app = await buildServer({
     max: env.AUTH_RATE_LIMIT_MAX,
     timeWindow: env.AUTH_RATE_LIMIT_WINDOW_SECONDS * 1000,
   },
+  trustProxy: env.TRUST_PROXY,
 });
 
 try {

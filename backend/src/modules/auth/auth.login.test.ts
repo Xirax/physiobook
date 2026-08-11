@@ -43,8 +43,11 @@ describe('POST /auth/login', () => {
   const login = (
     payload: NonNullable<InjectOptions['payload']>,
     instance: FastifyInstance = app,
+    headers: InjectOptions['headers'] = {},
   ): Promise<LightMyRequestResponse> =>
-    instance.inject({ method: 'POST', url: '/auth/login', payload });
+    instance.inject({ method: 'POST', url: '/auth/login', payload, headers });
+
+  const from = (clientIp: string) => ({ 'x-forwarded-for': clientIp });
 
   const credentials = { email: account.email, password: account.password };
 
@@ -308,6 +311,36 @@ describe('POST /auth/login', () => {
         await login({ ...credentials, password: 'guess-two' }, limited);
 
         expect((await login(credentials, limited)).statusCode).toBe(429);
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Ignores a forwarded address when no proxy is trusted, so it cannot be forged', async () => {
+      const limited = await buildTestApp({
+        databaseUrl: database.connectionString,
+        rateLimitMax: 1,
+      });
+
+      try {
+        expect((await login(credentials, limited, from('203.0.113.10'))).statusCode).toBe(201);
+        expect((await login(credentials, limited, from('203.0.113.11'))).statusCode).toBe(429);
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Buckets by the forwarded client when a proxy is trusted, not by the proxy', async () => {
+      const limited = await buildTestApp({
+        databaseUrl: database.connectionString,
+        rateLimitMax: 1,
+        trustProxy: 1,
+      });
+
+      try {
+        expect((await login(credentials, limited, from('203.0.113.10'))).statusCode).toBe(201);
+        expect((await login(credentials, limited, from('203.0.113.11'))).statusCode).toBe(201);
+        expect((await login(credentials, limited, from('203.0.113.10'))).statusCode).toBe(429);
       } finally {
         await limited.close();
       }

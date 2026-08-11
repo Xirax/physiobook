@@ -20,12 +20,14 @@ export interface BuildServerOptions {
   refreshTtlSeconds: number;
   secureCookies: boolean;
   rateLimit: RateLimitOptions;
+  trustProxy: boolean | number | string[];
 
   now?: () => Date;
 }
 export async function buildServer(options: BuildServerOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? true,
+    trustProxy: options.trustProxy,
   });
 
   app.setValidatorCompiler(validatorCompiler);
