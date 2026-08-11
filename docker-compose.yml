@@ -91,6 +91,12 @@ services:
       # compose-level fallback would quietly hand every deployment the same one.
       JWT_SECRET: ${JWT_SECRET}
       JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS}
+      # Session lifetime and the auth rate limit (E1.3). Like everything else
+      # here they carry no default: config/env.ts has the defaults, and a second
+      # set living in this file is a second set to drift.
+      REFRESH_TTL_SECONDS: ${REFRESH_TTL_SECONDS}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX}
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
     ports:

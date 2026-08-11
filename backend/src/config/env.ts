@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const JWT_SECRET_MIN_LENGTH = 32;
 
 const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 900;
+const DEFAULT_REFRESH_TTL_SECONDS = 604_800;
+const DEFAULT_AUTH_RATE_LIMIT_MAX = 10;
+const DEFAULT_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60;
 
 /**
  * The placeholder committed in `.env.example`, and therefore public. Rejected
@@ -41,6 +44,13 @@ export const envSchema = z.preprocess(
         .int()
         .positive()
         .default(DEFAULT_ACCESS_TOKEN_TTL_SECONDS),
+      REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(DEFAULT_REFRESH_TTL_SECONDS),
+      AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(DEFAULT_AUTH_RATE_LIMIT_MAX),
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(DEFAULT_AUTH_RATE_LIMIT_WINDOW_SECONDS),
       BACKEND_PORT: z.coerce.number().int().positive().max(65_535).default(3000),
       BACKEND_HOST: z.string().min(1).default('0.0.0.0'),
     })

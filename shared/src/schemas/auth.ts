@@ -41,6 +41,13 @@ export const registerRequestSchema = z.strictObject({
   full_name: fullNameSchema,
 });
 
+export const loginPasswordSchema = z.string().min(1).max(1024);
+
+export const loginRequestSchema = z.strictObject({
+  email: emailSchema,
+  password: loginPasswordSchema,
+});
+
 export const publicUserSchema = z.strictObject({
   id: z.uuid(),
   email: emailSchema,

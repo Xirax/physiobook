@@ -16,6 +16,9 @@ describe('loadEnv', () => {
 
     expect(env.NODE_ENV).toBe('development');
     expect(env.JWT_ACCESS_TTL_SECONDS).toBe(900);
+    expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
+    expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
+    expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
     expect(env.BACKEND_PORT).toBe(3000);
     expect(env.BACKEND_HOST).toBe('0.0.0.0');
   });
@@ -63,6 +66,14 @@ describe('loadEnv', () => {
     );
   });
 
+  it('Rejects a zero refresh TTL, which would end a session as it began', () => {
+    expect(() => loadEnv({ ...valid, REFRESH_TTL_SECONDS: '0' })).toThrow(/REFRESH_TTL_SECONDS/);
+  });
+
+  it('Rejects a zero rate-limit max, which would refuse every login', () => {
+    expect(() => loadEnv({ ...valid, AUTH_RATE_LIMIT_MAX: '0' })).toThrow(/AUTH_RATE_LIMIT_MAX/);
+  });
+
   it('Rejects an unknown NODE_ENV', () => {
     expect(() => loadEnv({ ...valid, NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
   });
@@ -74,6 +85,19 @@ describe('loadEnv', () => {
   describe('Blank variables, which is how compose passes an unset one', () => {
     it('Falls back to the TTL default rather than coercing an empty string to zero', () => {
       expect(loadEnv({ ...valid, JWT_ACCESS_TTL_SECONDS: '' }).JWT_ACCESS_TTL_SECONDS).toBe(900);
+    });
+
+    it('Falls back to the refresh and rate-limit defaults', () => {
+      const env = loadEnv({
+        ...valid,
+        REFRESH_TTL_SECONDS: '',
+        AUTH_RATE_LIMIT_MAX: '',
+        AUTH_RATE_LIMIT_WINDOW_SECONDS: '',
+      });
+
+      expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
+      expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
+      expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
     });
 
     it('Falls back to the port and host defaults', () => {

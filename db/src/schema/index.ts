@@ -11,3 +11,4 @@
  * never by a migration.
  */
 export * from './users.js';
+export * from './sessions.js';
