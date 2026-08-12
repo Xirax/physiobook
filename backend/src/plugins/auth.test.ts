@@ -5,7 +5,7 @@ import { errorCodes, errorResponseSchema, roleSchema } from '@physiobook/shared'
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest, LightMyRequestResponse } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -24,23 +24,37 @@ const identitySchema = z.strictObject({
   sessionId: z.uuid(),
 });
 
+export const GUARDED_BODY_FIELD = 'secretFieldName';
 
 function attachGuardedRoutes(app: FastifyInstance): void {
   const whoami = (request: FastifyRequest) => authenticatedUser(request);
+  const typed = app.withTypeProvider<ZodTypeProvider>();
 
-  app.withTypeProvider<ZodTypeProvider>().get(
+  typed.get(
     '/guarded/any',
     {
-      preHandler: app.requireAuth,
+      onRequest: app.requireAuth,
       schema: { response: { 200: identitySchema, 401: errorResponseSchema } },
     },
     whoami,
   );
 
-  app.get('/guarded/user-only', { preHandler: app.requireRole('user') }, whoami);
-  app.get('/guarded/admin-only', { preHandler: app.requireRole('admin') }, whoami);
-  app.get('/guarded/either', { preHandler: app.requireRole('user', 'admin') }, whoami);
-  app.get('/guarded/composed', { preHandler: [app.requireAuth, app.requireRole('admin')] }, whoami);
+  typed.post(
+    '/guarded/with-body',
+    {
+      onRequest: app.requireRole('admin'),
+      schema: {
+        body: z.strictObject({ [GUARDED_BODY_FIELD]: z.string() }),
+        response: { 200: identitySchema, 400: errorResponseSchema, 401: errorResponseSchema },
+      },
+    },
+    whoami,
+  );
+
+  app.get('/guarded/user-only', { onRequest: app.requireRole('user') }, whoami);
+  app.get('/guarded/admin-only', { onRequest: app.requireRole('admin') }, whoami);
+  app.get('/guarded/either', { onRequest: app.requireRole('user', 'admin') }, whoami);
+  app.get('/guarded/composed', { onRequest: [app.requireAuth, app.requireRole('admin')] }, whoami);
 
   app.get('/open', (request) => ({ user: request.user }));
   app.get('/forgotten-guard', whoami);
@@ -340,9 +354,62 @@ describe('Auth plugin', () => {
       expectUnauthorized(await get('/guarded/admin-only', token));
     });
 
-    it('Composes with requireAuth without authenticating twice', async () => {
+    it('Composes with requireAuth on one route', async () => {
       expect((await get('/guarded/composed', adminToken)).statusCode).toBe(200);
       expectForbidden(await get('/guarded/composed', userToken));
+    });
+
+    it('Reads the session once when both guards are listed', async () => {
+      const selects = vi.spyOn(app.db, 'select');
+
+      try {
+        expect((await get('/guarded/composed', adminToken)).statusCode).toBe(200);
+        expect(selects).toHaveBeenCalledTimes(1);
+      } finally {
+        selects.mockRestore();
+      }
+    });
+  });
+
+  describe('Ordering against the rest of the lifecycle', () => {
+    const postWithBody = (
+      payload: Record<string, unknown>,
+      token?: string,
+    ): Promise<LightMyRequestResponse> =>
+      app.inject({
+        method: 'POST',
+        url: '/guarded/with-body',
+        payload,
+        headers: token === undefined ? {} : { authorization: `Bearer ${token}` },
+      });
+
+    it('Answers an anonymous caller 401 even when the body is malformed', async () => {
+      expectUnauthorized(await postWithBody({ wrong: 'shape' }));
+    });
+
+    it('Tells an anonymous caller nothing about the schema it failed', async () => {
+      const response = await postWithBody({ wrong: 'shape' });
+
+      expect(response.body).not.toContain(GUARDED_BODY_FIELD);
+      expect(response.body).not.toContain('wrong');
+    });
+
+    it('Rejects an authenticated caller on role before it parses the body', async () => {
+      expectForbidden(await postWithBody({ wrong: 'shape' }, userToken));
+    });
+
+    it('Still validates the body once the caller is authorised', async () => {
+      const response = await postWithBody({ wrong: 'shape' }, adminToken);
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe(errorCodes.VALIDATION_FAILED);
+    });
+
+    it('Runs the handler for an authorised caller with a valid body', async () => {
+      const response = await postWithBody({ [GUARDED_BODY_FIELD]: 'value' }, adminToken);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().role).toBe('admin');
     });
   });
 
@@ -362,6 +429,22 @@ describe('Auth plugin', () => {
 
       expect(missing.body).toBe(tampered.body);
       expect(missing.body).toBe(killed.body);
+    });
+
+    it('Names the scheme on a 401, identically for every cause', async () => {
+      const [missing, tampered] = await Promise.all([
+        get('/guarded/any'),
+        get('/guarded/any', `${userToken}tampered`),
+      ]);
+
+      expect(missing.headers['www-authenticate']).toBe('Bearer');
+      expect(tampered.headers['www-authenticate']).toBe(missing.headers['www-authenticate']);
+    });
+
+    it('Leaves the scheme unnamed on a 403, which is not a challenge', async () => {
+      const response = await get('/guarded/admin-only', userToken);
+
+      expect(response.headers['www-authenticate']).toBeUndefined();
     });
 
     it('Never echoes the presented token back', async () => {

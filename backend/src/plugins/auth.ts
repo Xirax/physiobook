@@ -1,7 +1,7 @@
 import { sessions, type Database } from '@physiobook/db';
 import type { UserRole } from '@physiobook/shared';
 import { eq } from 'drizzle-orm';
-import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
+import type { FastifyInstance, FastifyRequest, onRequestAsyncHookHandler } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -21,8 +21,8 @@ declare module 'fastify' {
   }
 
   interface FastifyInstance {
-    requireAuth: preHandlerHookHandler;
-    requireRole: (...roles: [UserRole, ...UserRole[]]) => preHandlerHookHandler;
+    requireAuth: onRequestAsyncHookHandler;
+    requireRole: (...roles: [UserRole, ...UserRole[]]) => onRequestAsyncHookHandler;
   }
 }
 
@@ -106,7 +106,10 @@ async function authPlugin(
     return user;
   };
 
-  const requireAuth: preHandlerHookHandler = async (request) => {
+  // onRequest, not preHandler: a guard that runs after parsing and validation
+  // answers an anonymous caller 400 — describing a body it was never
+  // authenticated to see — before it ever answers 401.
+  const requireAuth: onRequestAsyncHookHandler = async (request) => {
     await authenticate(request);
   };
 
@@ -115,7 +118,7 @@ async function authPlugin(
   app.decorate('requireRole', (...roles: [UserRole, ...UserRole[]]) => {
     const allowed = new Set<UserRole>(roles);
 
-    const requireRole: preHandlerHookHandler = async (request) => {
+    const requireRole: onRequestAsyncHookHandler = async (request) => {
       const { role } = await authenticate(request);
 
       if (!allowed.has(role)) throw new ForbiddenError();
