@@ -69,6 +69,7 @@ services:
       VITE_USE_POLLING: 'true'
       # Lets the HMR client in the browser connect back on the published port.
       FRONTEND_PORT: ${FRONTEND_PORT}
+      BACKEND_ORIGIN: http://backend:${BACKEND_PORT}
     # `!override` is required, not stylistic: Compose CONCATENATES `ports` across
     # files instead of replacing them. Without it the service inherits the base
     # file's ${FRONTEND_PORT}:80 as well, both mappings claim the same host port,

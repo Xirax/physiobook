@@ -79,20 +79,27 @@ frontend/
 │   ├── lib/
 │   │   ├── api-client.ts     # typed fetch layer; attaches Bearer, single-flight 401→refresh→retry
 │   │   └── auth.ts           # in-memory token + session rehydration on load
-│   ├── styles/
+│   ├── styles/               # global.scss + _tokens.scss; components use *.module.scss
 │   └── types/
 ├── public/
 ├── tests/
 │   └── setup.ts              # RTL + Vitest setup
 ├── index.html
-├── vite.config.ts            # includes Vitest config (test.environment = jsdom); dev watch uses polling
+├── vite.config.ts            # includes Vitest config (test.environment = jsdom); dev watch uses polling; /auth proxy
 ├── tsconfig.json             # extends ../tsconfig.base.json
+├── tsconfig.node.json        # vite.config.ts only — Node globals stay out of src/
 └── package.json
 ```
 
 - **Component tests** (Vitest + React Testing Library) are co-located next to components as `*.test.tsx`.
 - The API client imports request/response types from `shared`, so the frontend cannot call the backend with the wrong shape.
 - **Auth model:** access token held in memory only; the refresh token is an httpOnly cookie. On app load and on any 401, the client silently calls `/auth/refresh` (single-flight) behind an auth-loading gate so guarded routes never flash to `/login`. Unauthenticated → `/login` (return-to preserved); wrong role → redirect to the user's own area (roles are not hierarchical).
+- **The API is served from the SPA's own origin, so there is no CORS layer anywhere in this repo (E1.5).** The Vite dev server proxies the API paths in development and `docker/frontend/nginx.conf` does it for the production build; `plugins/cors.ts` in §4's tree was never written and, on this design, never needs to be. Three things follow, all of them load-bearing:
+  - **The paths are proxied unrewritten** — `/auth` stays `/auth`, it does not become `/api/auth`. The refresh cookie is scoped `path=/auth` (§4), so the browser sends it back only to a URL that still begins with that. A prefix would put the cookie's path and the client's URL in two files that have to agree, and the failure mode when they stop agreeing is a cookie that is silently never sent — indistinguishable, from the frontend, from a user who is simply logged out.
+  - **The path list lives twice, in `vite.config.ts` and `nginx.conf`, and must be changed together.** A feature prefix added to one and not the other is a 404 in exactly one environment. There is no third place to put it: one is a Node config, the other is nginx's own syntax.
+  - **The api-client therefore uses relative URLs and no `credentials` mode**, and there is no `VITE_API_URL`. The browser never learns the backend's address, so nothing in the bundle has to be configured per environment. The dev server's upstream is `BACKEND_ORIGIN` — read by `vite.config.ts` in Node, deliberately without a `VITE_` prefix so it cannot reach the bundle.
+  - **It also puts a reverse proxy in front of the rate limiter, which `TRUST_PROXY` has to be told about** in any deployment that routes real users this way — see §10 and the note in `.env.example`. The default stays `false`, correct for the directly-published dev stack, rather than being changed to suit an environment this repo does not yet have.
+- **Vitest for the client is configured in `vite.config.ts`, not a separate file**, unlike the backend: the frontend's test environment needs the same `@vitejs/plugin-react` transform and the same `resolve.conditions` as the dev server, and a second file would be a second copy of both. `resolve.conditions` names `development` so dev, `vite build` and Vitest all read `shared`'s TypeScript source rather than a `dist/` built at some other commit.
 
 ---
 

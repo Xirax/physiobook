@@ -1,0 +1,25 @@
+// Design tokens. Emitted as custom properties rather than kept as Sass
+// variables so a value can be overridden per-theme at runtime; Sass's job here
+// is composition and nesting, not the values themselves.
+
+:root {
+  --colour-surface: #ffffff;
+  --colour-surface-sunken: #f4f6f8;
+  --colour-border: #d4dae0;
+  --colour-text: #16202a;
+  --colour-text-muted: #5b6b7a;
+  --colour-accent: #14657a;
+  --colour-accent-contrast: #ffffff;
+  --colour-danger: #a4212b;
+  --colour-danger-surface: #fdf2f3;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+
+  --radius: 0.375rem;
+  --font-body: system-ui, -apple-system, 'Segoe UI', roboto, helvetica, arial, sans-serif;
+}

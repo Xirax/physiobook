@@ -1,0 +1,22 @@
+@use 'tokens';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--colour-text);
+  background: var(--colour-surface-sunken);
+  line-height: 1.5;
+}
+
+// A visible focus ring is a requirement, not a default (FRONTEND_DEV.md §7):
+// browsers hide it from mouse users, and some resets remove it outright.
+:focus-visible {
+  outline: 2px solid var(--colour-accent);
+  outline-offset: 2px;
+}
