@@ -4,9 +4,9 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest, onRequestAsyncHookHandler } from 'fastify';
 import fp from 'fastify-plugin';
 import jwt from 'jsonwebtoken';
-import { z } from 'zod';
 
 import { ForbiddenError, UnauthorizedError } from '../lib/errors.js';
+import { isSessionId } from '../lib/session-id.js';
 import { verifyAccessToken, type AccessTokenClaims } from '../lib/tokens.js';
 
 export interface AuthenticatedUser {
@@ -32,7 +32,6 @@ export interface AuthPluginOptions {
 }
 
 const BEARER = /^Bearer +([^ ]+)$/i;
-const sessionIdSchema = z.uuid();
 
 function bearerTokenOf(header: string | undefined): string | undefined {
   return BEARER.exec(header ?? '')?.[1];
@@ -53,7 +52,7 @@ async function findLiveSession(
   sessionId: string,
   at: Date,
 ): Promise<{ userId: string } | undefined> {
-  if (!sessionIdSchema.safeParse(sessionId).success) return undefined;
+  if (!isSessionId(sessionId)) return undefined;
 
   const [session] = await db
     .select({

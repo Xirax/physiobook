@@ -1,11 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { z } from 'zod';
+import { isSessionId } from './session-id.js';
 
 const SECRET_BYTES = 32;
 const SEPARATOR = '.';
-
-const sessionIdSchema = z.uuid();
 
 export interface RefreshToken {
   value: string;
@@ -37,10 +35,7 @@ export function parseRefreshToken(value: string): ParsedRefreshToken | undefined
   const sessionId = value.slice(0, separator);
   const secret = value.slice(separator + 1);
 
-  // The session id half comes from a cookie, so it is whatever the client typed.
-  // Compared against a `uuid` column it would raise Postgres 22P02, turning
-  // "no such session" into a 500 — the shape check keeps the answer a 401.
-  if (secret === '' || !sessionIdSchema.safeParse(sessionId).success) return undefined;
+  if (secret === '' || !isSessionId(sessionId)) return undefined;
 
   return { sessionId, secret };
 }

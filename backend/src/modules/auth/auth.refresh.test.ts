@@ -135,7 +135,50 @@ describe('POST /auth/refresh', () => {
       expect(responses.map((response) => response.statusCode)).toEqual([200, 200, 200]);
     });
 
-    it('Is not rate limited, since a tab refreshes on every load', async () => {
+    it('Accepts the JSON content type an api-client sets on every POST, with no body', async () => {
+      const opened = await openSession();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { 'content-type': 'application/json' },
+        cookies: { [REFRESH_COOKIE_NAME]: opened.cookie },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ token: expect.any(String) });
+    });
+
+    it('Ignores a body someone sends anyway', async () => {
+      const opened = await openSession();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: { unexpected: 'field' },
+        cookies: { [REFRESH_COOKIE_NAME]: opened.cookie },
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('Still answers 400 to a body that is not the JSON it claims to be', async () => {
+      const opened = await openSession();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        headers: { 'content-type': 'application/json' },
+        payload: '{ not json',
+        cookies: { [REFRESH_COOKIE_NAME]: opened.cookie },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('Rate limiting', () => {
+    it("Does not share login's bucket, so several tabs loading cannot exhaust it", async () => {
       const limited = await buildTestApp({
         databaseUrl: database.connectionString,
         rateLimitMax: 2,
@@ -147,6 +190,70 @@ describe('POST /auth/refresh', () => {
         for (let attempt = 0; attempt < 5; attempt += 1) {
           expect((await refresh(opened.cookie, limited)).statusCode).toBe(200);
         }
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Answers 429 in the standard error shape once its own bucket is passed', async () => {
+      const limited = await buildTestApp({
+        databaseUrl: database.connectionString,
+        refreshRateLimitMax: 2,
+      });
+
+      try {
+        const opened = await openSession(limited);
+
+        expect((await refresh(opened.cookie, limited)).statusCode).toBe(200);
+        expect((await refresh(opened.cookie, limited)).statusCode).toBe(200);
+
+        const blocked = await refresh(opened.cookie, limited);
+
+        expect(blocked.statusCode).toBe(429);
+        expect(blocked.json()).toEqual({
+          code: errorCodes.RATE_LIMITED,
+          message: expect.any(String),
+        });
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Counts refusals too, so a forged cookie cannot be retried without bound', async () => {
+      const limited = await buildTestApp({
+        databaseUrl: database.connectionString,
+        refreshRateLimitMax: 2,
+      });
+
+      try {
+        expect((await refresh(`${randomUUID()}.one`, limited)).statusCode).toBe(401);
+        expect((await refresh(`${randomUUID()}.two`, limited)).statusCode).toBe(401);
+
+        expect((await refresh(`${randomUUID()}.three`, limited)).statusCode).toBe(429);
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Leaves login reachable once refresh has been exhausted', async () => {
+      const limited = await buildTestApp({
+        databaseUrl: database.connectionString,
+        refreshRateLimitMax: 1,
+      });
+
+      try {
+        const opened = await openSession(limited);
+
+        expect((await refresh(opened.cookie, limited)).statusCode).toBe(200);
+        expect((await refresh(opened.cookie, limited)).statusCode).toBe(429);
+
+        const login = await limited.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: { email: 'admin@physiobook.local', password: 'ChangeMe123!' },
+        });
+
+        expect(login.statusCode).toBe(201);
       } finally {
         await limited.close();
       }

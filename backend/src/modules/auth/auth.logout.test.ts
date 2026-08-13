@@ -114,6 +114,52 @@ describe('POST /auth/logout', () => {
       expect(cleared?.value).toBe('');
     });
 
+    it('Accepts the JSON content type an api-client sets on every POST, with no body', async () => {
+      const opened = await login();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          authorization: `Bearer ${opened.accessToken}`,
+          'content-type': 'application/json',
+        },
+      });
+
+      expect(response.statusCode).toBe(204);
+      expect(await revokedAtOf(opened.sessionId)).toBeInstanceOf(Date);
+    });
+
+    it('Ignores a body someone sends anyway', async () => {
+      const opened = await login();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: { authorization: `Bearer ${opened.accessToken}` },
+        payload: { unexpected: 'field' },
+      });
+
+      expect(response.statusCode).toBe(204);
+    });
+
+    it('Still answers 400 to a body that is not the JSON it claims to be', async () => {
+      const opened = await login();
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: {
+          authorization: `Bearer ${opened.accessToken}`,
+          'content-type': 'application/json',
+        },
+        payload: '{ not json',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(await revokedAtOf(opened.sessionId)).toBeNull();
+    });
+
     it("Leaves the account's other sessions alone", async () => {
       const first = await login();
       const second = await login();
