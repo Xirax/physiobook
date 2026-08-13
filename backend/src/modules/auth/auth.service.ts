@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
 import { sessions, users, type Database } from '@physiobook/db';
-import type { LoginRequest, PublicUser, RegisterRequest, UserRole } from '@physiobook/shared';
+import type {
+  LoginRequest,
+  PublicUser,
+  RefreshResponse,
+  RegisterRequest,
+  UserRole,
+} from '@physiobook/shared';
 import bcrypt from 'bcrypt';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import {
   EmailTakenError,
@@ -11,8 +17,13 @@ import {
   InvalidCredentialsError,
   isPostgresError,
   PG_UNIQUE_VIOLATION,
+  UnauthorizedError,
 } from '../../lib/errors.js';
-import { mintRefreshToken } from '../../lib/refresh-token.js';
+import {
+  mintRefreshToken,
+  parseRefreshToken,
+  refreshSecretMatches,
+} from '../../lib/refresh-token.js';
 import { signAccessToken } from '../../lib/tokens.js';
 
 export const BCRYPT_COST = 12;
@@ -20,12 +31,18 @@ const EMAIL_UNIQUE_CONSTRAINT = 'users_email_unique';
 
 export const DUMMY_PASSWORD_HASH = '$2b$12$P1lKSS4zskA.fVALxfV6IORLjMC8z3Gy/nE/ylcBsF75jvAbXccNG';
 
-export interface AuthDependencies {
+export interface RevokeDependencies {
   db: Database;
+  now?: () => Date;
+}
+
+export interface RefreshDependencies extends RevokeDependencies {
   jwtSecret: string;
   jwtTtlSeconds: number;
+}
+
+export interface AuthDependencies extends RefreshDependencies {
   refreshTtlSeconds: number;
-  now?: () => Date;
 }
 
 export interface AuthResult {
@@ -141,4 +158,54 @@ export async function loginUser(
   const { passwordHash: _hash, ...row } = found;
 
   return startSession(row, dependencies);
+}
+
+export async function refreshSession(
+  cookie: string | undefined,
+  { db, jwtSecret, jwtTtlSeconds, now = () => new Date() }: RefreshDependencies,
+): Promise<RefreshResponse> {
+  const presented = cookie === undefined ? undefined : parseRefreshToken(cookie);
+  if (presented === undefined) throw new UnauthorizedError();
+
+  const at = now();
+
+  const [session] = await db
+    .select({
+      id: sessions.id,
+      tokenHash: sessions.tokenHash,
+      expiresAt: sessions.expiresAt,
+      revokedAt: sessions.revokedAt,
+      userId: users.id,
+      role: users.role,
+    })
+    .from(sessions)
+    .innerJoin(users, eq(users.id, sessions.userId))
+    .where(eq(sessions.id, presented.sessionId))
+    .limit(1);
+
+  if (session === undefined) throw new UnauthorizedError();
+
+  const live =
+    refreshSecretMatches(presented.secret, session.tokenHash) &&
+    session.revokedAt === null &&
+    session.expiresAt > at;
+
+  if (!live) throw new UnauthorizedError();
+
+  return {
+    token: signAccessToken(
+      { id: session.userId, role: session.role, sessionId: session.id },
+      { secret: jwtSecret, ttlSeconds: jwtTtlSeconds, now: () => at },
+    ),
+  };
+}
+
+export async function revokeSession(
+  sessionId: string,
+  { db, now = () => new Date() }: RevokeDependencies,
+): Promise<void> {
+  await db
+    .update(sessions)
+    .set({ revokedAt: now() })
+    .where(and(eq(sessions.id, sessionId), isNull(sessions.revokedAt)));
 }

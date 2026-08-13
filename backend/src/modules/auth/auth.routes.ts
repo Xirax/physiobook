@@ -2,13 +2,24 @@ import {
   authResponseSchema,
   errorResponseSchema,
   loginRequestSchema,
+  refreshResponseSchema,
   registerRequestSchema,
 } from '@physiobook/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 
+import { UnauthorizedError } from '../../lib/errors.js';
+import { authenticatedUser } from '../../plugins/auth.js';
+import { REFRESH_COOKIE_NAME } from '../../plugins/cookie.js';
 import { RATE_LIMITED_ROUTE } from '../../plugins/rate-limit.js';
-import { loginUser, registerUser, type AuthResult } from './auth.service.js';
+import {
+  loginUser,
+  refreshSession,
+  registerUser,
+  revokeSession,
+  type AuthResult,
+} from './auth.service.js';
 
 export interface AuthRoutesOptions {
   jwtSecret: string;
@@ -69,5 +80,45 @@ export async function authRoutes(
       },
     },
     async (request, reply) => respond(reply, await loginUser(request.body, dependencies)),
+  );
+
+  typed.post(
+    '/auth/refresh',
+    {
+      schema: {
+        response: {
+          200: refreshResponseSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await refreshSession(request.cookies[REFRESH_COOKIE_NAME], dependencies);
+      } catch (error) {
+        if (error instanceof UnauthorizedError) app.clearRefreshCookie(reply);
+
+        throw error;
+      }
+    },
+  );
+
+  typed.post(
+    '/auth/logout',
+    {
+      onRequest: app.requireAuth,
+      schema: {
+        response: {
+          204: z.void(),
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      await revokeSession(authenticatedUser(request).sessionId, dependencies);
+      app.clearRefreshCookie(reply);
+
+      return reply.status(204).send();
+    },
   );
 }
