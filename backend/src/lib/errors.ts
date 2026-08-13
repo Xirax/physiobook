@@ -24,6 +24,18 @@ export class InvalidCredentialsError extends DomainError {
   }
 }
 
+export class UnauthorizedError extends DomainError {
+  constructor() {
+    super(errorCodes.UNAUTHORIZED, 401, 'Authentication required');
+  }
+}
+
+export class ForbiddenError extends DomainError {
+  constructor() {
+    super(errorCodes.FORBIDDEN, 403, 'You do not have access to this resource');
+  }
+}
+
 export class RateLimitedError extends DomainError {
   constructor(retryAfter: string) {
     super(errorCodes.RATE_LIMITED, 429, `Too many requests. Try again in ${retryAfter}.`);

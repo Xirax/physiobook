@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
 import { authRoutes } from './modules/auth/auth.routes.js';
+import authPlugin from './plugins/auth.js';
 import cookiePlugin from './plugins/cookie.js';
 import databasePlugin from './plugins/db.js';
 import errorHandlerPlugin from './plugins/error-handler.js';
@@ -37,6 +38,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   await app.register(databasePlugin, { connectionString: options.databaseUrl });
   await app.register(cookiePlugin, { secure: options.secureCookies });
   await app.register(rateLimitPlugin, options.rateLimit);
+  await app.register(authPlugin, {
+    jwtSecret: options.jwtSecret,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
 
   app.get('/health', () => ({ status: 'ok' }));
 

@@ -54,6 +54,11 @@ async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
     if (isDomainError(error)) {
       request.log.info({ code: error.code }, error.message);
 
+      // RFC 9110 §15.5.2 requires a 401 to name the scheme. Deliberately bare:
+      // RFC 6750's `error="invalid_token"` parameter would tell a prober which
+      // 401 it hit, which is the distinction the single body exists to deny.
+      if (error.statusCode === 401) reply.header('WWW-Authenticate', 'Bearer');
+
       return reply.status(error.statusCode).send({
         code: error.code,
         message: error.message,
