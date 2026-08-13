@@ -31,8 +31,11 @@ const EMAIL_UNIQUE_CONSTRAINT = 'users_email_unique';
 
 export const DUMMY_PASSWORD_HASH = '$2b$12$P1lKSS4zskA.fVALxfV6IORLjMC8z3Gy/nE/ylcBsF75jvAbXccNG';
 
-export interface RevokeDependencies {
+export interface LookupDependencies {
   db: Database;
+}
+
+export interface RevokeDependencies extends LookupDependencies {
   now?: () => Date;
 }
 
@@ -158,6 +161,20 @@ export async function loginUser(
   const { passwordHash: _hash, ...row } = found;
 
   return startSession(row, dependencies);
+}
+
+export async function findUserById(
+  userId: string,
+  { db }: LookupDependencies,
+): Promise<PublicUser> {
+  const [row] = await db.select(publicColumns).from(users).where(eq(users.id, userId)).limit(1);
+
+  // The guard already proved a live session, and sessions cascade with their
+  // user — so a missing row means the account was deleted mid-request. That is
+  // a dead credential, not a 404.
+  if (row === undefined) throw new UnauthorizedError();
+
+  return toPublicUser(row);
 }
 
 export async function refreshSession(
