@@ -68,6 +68,14 @@ describe('refresh tokens', () => {
     it('Rejects an empty value', () => {
       expect(parseRefreshToken('')).toBeUndefined();
     });
+
+    it('Rejects a session id that is not a uuid, which a uuid column answers with 22P02', () => {
+      expect(parseRefreshToken('not-a-uuid.secret')).toBeUndefined();
+    });
+
+    it('Splits on the first separator, so a secret may contain one', () => {
+      expect(parseRefreshToken(`${sessionId}.a.b`)).toEqual({ sessionId, secret: 'a.b' });
+    });
   });
 
   describe('refreshSecretMatches', () => {

@@ -19,6 +19,7 @@ describe('loadEnv', () => {
     expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
     expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
     expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
+    expect(env.REFRESH_RATE_LIMIT_MAX).toBe(100);
     expect(env.TRUST_PROXY).toBe(false);
     expect(env.BACKEND_PORT).toBe(3000);
     expect(env.BACKEND_HOST).toBe('0.0.0.0');
@@ -126,11 +127,13 @@ describe('loadEnv', () => {
         REFRESH_TTL_SECONDS: '',
         AUTH_RATE_LIMIT_MAX: '',
         AUTH_RATE_LIMIT_WINDOW_SECONDS: '',
+        REFRESH_RATE_LIMIT_MAX: '',
       });
 
       expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
       expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
       expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
+      expect(env.REFRESH_RATE_LIMIT_MAX).toBe(100);
     });
 
     it('Falls back to the port and host defaults', () => {

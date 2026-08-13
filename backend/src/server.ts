@@ -10,6 +10,7 @@ import rateLimitPlugin from './plugins/rate-limit.js';
 
 export interface RateLimitOptions {
   max: number;
+  refreshMax: number;
   timeWindow: number | string;
 }
 
@@ -49,6 +50,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     jwtSecret: options.jwtSecret,
     jwtTtlSeconds: options.jwtTtlSeconds,
     refreshTtlSeconds: options.refreshTtlSeconds,
+    refreshRateLimitMax: options.rateLimit.refreshMax,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 

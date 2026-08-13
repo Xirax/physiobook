@@ -1,5 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
+import { isSessionId } from './session-id.js';
+
 const SECRET_BYTES = 32;
 const SEPARATOR = '.';
 
@@ -33,7 +35,7 @@ export function parseRefreshToken(value: string): ParsedRefreshToken | undefined
   const sessionId = value.slice(0, separator);
   const secret = value.slice(separator + 1);
 
-  if (secret === '') return undefined;
+  if (secret === '' || !isSessionId(sessionId)) return undefined;
 
   return { sessionId, secret };
 }

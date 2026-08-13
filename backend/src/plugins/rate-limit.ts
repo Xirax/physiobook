@@ -11,6 +11,10 @@ export interface RateLimitPluginOptions {
 
 export const RATE_LIMITED_ROUTE = { rateLimit: {} } as const;
 
+export function rateLimitedRoute(max: number): { rateLimit: { max: number } } {
+  return { rateLimit: { max } };
+}
+
 async function rateLimitPlugin(
   app: FastifyInstance,
   { max, timeWindow }: RateLimitPluginOptions,

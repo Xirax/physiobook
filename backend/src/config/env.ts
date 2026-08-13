@@ -6,6 +6,7 @@ const DEFAULT_ACCESS_TOKEN_TTL_SECONDS = 900;
 const DEFAULT_REFRESH_TTL_SECONDS = 604_800;
 const DEFAULT_AUTH_RATE_LIMIT_MAX = 10;
 const DEFAULT_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60;
+const DEFAULT_REFRESH_RATE_LIMIT_MAX = DEFAULT_AUTH_RATE_LIMIT_MAX * 10;
 
 /**
  * The placeholder committed in `.env.example`, and therefore public. Rejected
@@ -96,6 +97,11 @@ export const envSchema = z.preprocess(
         .default(DEFAULT_ACCESS_TOKEN_TTL_SECONDS),
       REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(DEFAULT_REFRESH_TTL_SECONDS),
       AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(DEFAULT_AUTH_RATE_LIMIT_MAX),
+      REFRESH_RATE_LIMIT_MAX: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(DEFAULT_REFRESH_RATE_LIMIT_MAX),
       AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce
         .number()
         .int()

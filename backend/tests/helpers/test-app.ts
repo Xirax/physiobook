@@ -15,6 +15,7 @@ export interface TestAppOptions {
   refreshTtlSeconds?: number;
   secureCookies?: boolean;
   rateLimitMax?: number;
+  refreshRateLimitMax?: number;
   trustProxy?: boolean | number | string[];
 }
 
@@ -25,6 +26,7 @@ export function buildTestApp({
   refreshTtlSeconds = TEST_REFRESH_TTL_SECONDS,
   secureCookies = false,
   rateLimitMax = TEST_RATE_LIMIT_MAX,
+  refreshRateLimitMax = TEST_RATE_LIMIT_MAX,
   trustProxy = false,
 }: TestAppOptions): Promise<FastifyInstance> {
   return buildServer({
@@ -33,7 +35,7 @@ export function buildTestApp({
     jwtTtlSeconds,
     refreshTtlSeconds,
     secureCookies,
-    rateLimit: { max: rateLimitMax, timeWindow: 60_000 },
+    rateLimit: { max: rateLimitMax, refreshMax: refreshRateLimitMax, timeWindow: 60_000 },
     trustProxy,
     logger: false,
     ...(now === undefined ? {} : { now }),

@@ -60,3 +60,7 @@ export const authResponseSchema = z.strictObject({
   user: publicUserSchema,
   token: z.string(),
 });
+
+export const refreshResponseSchema = z.strictObject({
+  token: z.string(),
+});
