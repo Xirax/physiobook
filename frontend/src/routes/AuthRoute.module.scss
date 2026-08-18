@@ -1,0 +1,10 @@
+.page {
+  padding: var(--space-4);
+}
+
+.switch {
+  width: min(26rem, 100%);
+  margin: 0 auto;
+  color: var(--colour-text-muted);
+  text-align: center;
+}

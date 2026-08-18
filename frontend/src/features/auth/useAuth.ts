@@ -1,3 +1,4 @@
+import type { PublicUser } from '@physiobook/shared';
 import { useContext } from 'react';
 
 import type { ApiClient } from '../../lib/api-client';
@@ -13,4 +14,10 @@ export function useAuth(): AuthContextValue {
 
 export function useApi(): ApiClient {
   return useAuth().api;
+}
+
+export function useCurrentUser(): PublicUser | null {
+  const { state } = useAuth();
+
+  return state.status === 'authenticated' ? state.user : null;
 }
