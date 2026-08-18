@@ -1,4 +1,9 @@
-import { errorCodes, publicUserSchema, type PublicUser } from '@physiobook/shared';
+import {
+  errorCodes,
+  publicUserSchema,
+  type ErrorResponse,
+  type PublicUser,
+} from '@physiobook/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -298,6 +303,64 @@ describe('createApiClient', () => {
       await expect(api.request('/auth/me', { schema: publicUserSchema })).rejects.toBeInstanceOf(
         TypeError,
       );
+
+      expect(tokens.get()).toBe('stale-token');
+    });
+  });
+
+  describe('When the refresh fails without answering about the cookie', () => {
+    const refreshFailingWith = (status: number, body: ErrorResponse) =>
+      vi.fn<typeof globalThis.fetch>(async (input) =>
+        String(input) === REFRESH_PATH
+          ? Promise.resolve(json(status, body))
+          : Promise.resolve(unauthorized()),
+      );
+
+    it('Keeps the session through a transient server fault', async () => {
+      const fetch = refreshFailingWith(500, {
+        code: errorCodes.INTERNAL_ERROR,
+        message: 'Internal server error',
+      });
+      const { api, tokens } = clientWith(fetch, 'stale-token');
+
+      await refusalOf(api.request('/auth/me', { schema: publicUserSchema }));
+
+      expect(tokens.get()).toBe('stale-token');
+    });
+
+    it('Keeps the session when the refresh is rate limited', async () => {
+      const fetch = refreshFailingWith(429, {
+        code: errorCodes.RATE_LIMITED,
+        message: 'Too many requests',
+      });
+      const { api, tokens } = clientWith(fetch, 'stale-token');
+
+      await refusalOf(api.request('/auth/me', { schema: publicUserSchema }));
+
+      expect(tokens.get()).toBe('stale-token');
+    });
+
+    it('Reports why the refresh failed, not the 401 that provoked it', async () => {
+      const fetch = refreshFailingWith(502, {
+        code: errorCodes.INTERNAL_ERROR,
+        message: 'Bad gateway',
+      });
+      const { api } = clientWith(fetch, 'stale-token');
+
+      const error = await refusalOf(api.request('/auth/me', { schema: publicUserSchema }));
+
+      expect(error.status).toBe(502);
+    });
+
+    it('Leaves the token alone when the on-load rehydration hits the same fault', async () => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          json(503, { code: errorCodes.INTERNAL_ERROR, message: 'Service unavailable' }),
+        );
+      const { api, tokens } = clientWith(fetch, 'stale-token');
+
+      await expect(api.refresh()).rejects.toBeInstanceOf(ApiError);
 
       expect(tokens.get()).toBe('stale-token');
     });

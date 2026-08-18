@@ -39,7 +39,7 @@ export default defineConfig({
     port: 5173,
 
     proxy: Object.fromEntries(
-      apiPaths.map((path) => [path, { target: backendOrigin, changeOrigin: false }]),
+      apiPaths.map((path) => [path, { target: backendOrigin, changeOrigin: false, xfwd: true }]),
     ),
 
     // Filesystem events do not cross the Windows/WSL2 bind-mount boundary, so

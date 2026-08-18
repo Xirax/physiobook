@@ -43,6 +43,13 @@ services:
     # Dev only: worth surviving a Docker Desktop restart. The base file leaves
     # this unset so CI can fail fast on a crash loop.
     restart: unless-stopped
+    # Dev only, and the reason the base file publishes nothing: a direct route in
+    # is a route on which the client writes its own X-Forwarded-For, so the auth
+    # rate limit can be sidestepped from the host. That is a fair trade for being
+    # able to curl the API while debugging; it is not a trade to make in a
+    # deployment, which is why this lives here and not in docker-compose.yml.
+    ports:
+      - '${BACKEND_PORT}:${BACKEND_PORT}'
     environment:
       NODE_ENV: development
       # tsx watches via chokidar; see the polling note above.

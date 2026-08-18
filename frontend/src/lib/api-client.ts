@@ -104,14 +104,18 @@ export function createApiClient({
   const runRefresh = async (): Promise<string | null> => {
     const response = await fetch(REFRESH_PATH, { method: 'POST' });
 
-    // Cleared only on an answer, never on a thrown error: a network blip is not
-    // a refusal, and treating it as one would log a user out for a dropped
-    // packet. The backend narrows its own cookie-clearing the same way (§4).
-    if (!response.ok) {
+    // Only a 401 is the API answering that the cookie is no longer good. A 429,
+    // a 502 from the proxy or a 500 from a transient database fault are
+    // failures to answer at all, and are rethrown like a dropped connection so
+    // the session stands. The backend narrows its own cookie-clearing to a 401
+    // for the same reason (PROJECT_STRUCTURE.md §6).
+    if (response.status === 401) {
       tokens.clear();
 
       return null;
     }
+
+    if (!response.ok) throw await readError(response);
 
     const { token } = refreshResponseSchema.parse(await response.json());
     tokens.set(token);
