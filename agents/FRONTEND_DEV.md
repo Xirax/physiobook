@@ -21,6 +21,27 @@ frontend/src/
 
 ---
 
+## 1a. Components are arrow functions
+
+Every React component is a `const` bound to an arrow function. No `function` declarations:
+
+```tsx
+export const AuthGate = ({ children }: AuthGateProps) => {
+  ...
+};
+```
+
+- **One shape for every component**, so a file never mixes two spellings of the same thing.
+- A component is a **value**: it gets wrapped (`memo`, `lazy`), passed, and re-exported. `const` keeps the definition and the wrapping symmetrical.
+- **No hoisting is the point.** A component cannot be referenced above its own definition, so a file reads top-down.
+- A component whose body is just its JSX drops the braces and the `return`.
+
+**This applies to components only.** Hooks, factories, and plain helpers stay `function` declarations — `useAuthProvider`, `createApiClient`, `createTokenStore`. The two spellings then tell you which kind of thing you are looking at before you read the name.
+
+Not currently lint-enforced: the rule (`react/function-component-definition`) needs `eslint-plugin-react`, and only `eslint-plugin-react-hooks` is installed. Adding it is a fine call to make — with the reason recorded, per §9.
+
+---
+
 ## 2. Types & the API contract
 
 - **Import request/response types from `shared/`.** Never hand-redefine a shape the backend already owns — that is how frontend and backend drift.

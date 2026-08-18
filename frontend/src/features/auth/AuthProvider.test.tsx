@@ -30,7 +30,7 @@ const stubApi = ({ refresh, request }: StubOptions = {}) => ({
   request: vi.fn(request ?? (() => Promise.resolve(undefined))) as unknown as ApiClient['request'],
 });
 
-function StateProbe() {
+const StateProbe = () => {
   const { state, login, register, logout } = useAuth();
 
   return (
@@ -65,7 +65,7 @@ function StateProbe() {
       </button>
     </div>
   );
-}
+};
 
 const renderProvider = (
   api: ReturnType<typeof stubApi>,
