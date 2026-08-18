@@ -1,3 +1,4 @@
+import type { UserRole } from '@physiobook/shared';
 import type { ComponentType } from 'react';
 
 import { AdminHome } from './admin/AdminHome';
@@ -11,13 +12,14 @@ import { RegisterRoute } from './RegisterRoute';
 export interface AppRoute {
   path: string;
   Component: ComponentType;
+  requires?: UserRole;
 }
 
 export const routeConfig: readonly AppRoute[] = [
   { path: paths.home, Component: HomeRedirect },
   { path: paths.login, Component: LoginRoute },
   { path: paths.register, Component: RegisterRoute },
-  { path: paths.appointments, Component: MyAppointments },
-  { path: paths.admin, Component: AdminHome },
+  { path: paths.appointments, Component: MyAppointments, requires: 'user' },
+  { path: paths.admin, Component: AdminHome, requires: 'admin' },
   { path: '*', Component: NotFound },
 ];

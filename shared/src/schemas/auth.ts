@@ -60,10 +60,7 @@ export const registerRequestSchema = z.strictObject({
 // Deliberately not `passwordSchema`: login checks a password that already
 // exists, so restating the strength rules here would tell someone with an older
 // password that their own credential is invalid before it is even sent.
-export const loginPasswordSchema = z
-  .string()
-  .min(1, { message: 'Enter your password' })
-  .max(1024);
+export const loginPasswordSchema = z.string().min(1, { message: 'Enter your password' }).max(1024);
 
 export const loginRequestSchema = z.strictObject({
   email: emailSchema,

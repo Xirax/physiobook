@@ -7,7 +7,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../lib/api-client';
 import { LoginForm } from './LoginForm';
 
-const renderForm = (onSubmit: (values: LoginRequest) => Promise<void> = () => Promise.resolve()) => {
+const renderForm = (
+  onSubmit: (values: LoginRequest) => Promise<void> = () => Promise.resolve(),
+) => {
   const submitted = vi.fn(onSubmit);
 
   render(<LoginForm onSubmit={submitted} />);
@@ -188,9 +190,7 @@ describe('LoginForm when the API refuses', () => {
   });
 
   it('Blames the connection when the request never reached the API', async () => {
-    const { email, password, button } = renderForm(
-      refuseWith(new TypeError('Failed to fetch')),
-    );
+    const { email, password, button } = renderForm(refuseWith(new TypeError('Failed to fetch')));
 
     await fillValid(email, password);
     await userEvent.click(button);

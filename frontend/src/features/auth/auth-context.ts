@@ -3,7 +3,6 @@ import { createContext } from 'react';
 
 import type { ApiClient } from '../../lib/api-client';
 
-
 export type AuthState =
   { status: 'loading' } | { status: 'anonymous' } | { status: 'authenticated'; user: PublicUser };
 

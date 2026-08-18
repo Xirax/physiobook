@@ -1,13 +1,23 @@
 import { Route, Routes } from 'react-router';
 
 import { AuthGate } from './features/auth/AuthGate';
-import { routeConfig } from './routes/route-config';
+import { RequireRole } from './routes/RequireRole';
+import { routeConfig, type AppRoute } from './routes/route-config';
+
+const elementFor = ({ Component, requires }: AppRoute) =>
+  requires === undefined ? (
+    <Component />
+  ) : (
+    <RequireRole role={requires}>
+      <Component />
+    </RequireRole>
+  );
 
 export const App = () => (
   <AuthGate>
     <Routes>
-      {routeConfig.map(({ path, Component }) => (
-        <Route key={path} path={path} element={<Component />} />
+      {routeConfig.map((route) => (
+        <Route key={route.path} path={route.path} element={elementFor(route)} />
       ))}
     </Routes>
   </AuthGate>
