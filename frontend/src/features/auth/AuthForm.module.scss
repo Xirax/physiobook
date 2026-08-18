@@ -1,0 +1,41 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(26rem, 100%);
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  border: 1px solid var(--colour-border);
+  border-radius: var(--radius);
+  background: var(--colour-surface);
+}
+
+.heading {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.alert {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--colour-danger);
+  border-radius: var(--radius);
+  background: var(--colour-danger-surface);
+  color: var(--colour-danger);
+}
+
+.submit {
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--colour-accent);
+  color: var(--colour-accent-contrast);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    cursor: progress;
+    opacity: 0.7;
+  }
+}

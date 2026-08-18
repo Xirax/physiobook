@@ -36,7 +36,7 @@ export const AuthGate = ({ children }: AuthGateProps) => {
 - **No hoisting is the point.** A component cannot be referenced above its own definition, so a file reads top-down.
 - A component whose body is just its JSX drops the braces and the `return`.
 
-**This applies to components only.** Hooks, factories, and plain helpers stay `function` declarations — `useAuthProvider`, `createApiClient`, `createTokenStore`. The two spellings then tell you which kind of thing you are looking at before you read the name.
+**This applies to components only**, and changes nothing about the rest. Exported hooks, factories, and helpers keep the `function` declaration — `useZodForm`, `createApiClient`, `describeAuthError` — so at a module's top level the keyword itself says "not a component".
 
 Not currently lint-enforced: the rule (`react/function-component-definition`) needs `eslint-plugin-react`, and only `eslint-plugin-react-hooks` is installed. Adding it is a fine call to make — with the reason recorded, per §9.
 
