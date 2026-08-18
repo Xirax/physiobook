@@ -50,14 +50,18 @@ const LocationProbe = () => {
 };
 
 export const renderAppAt = (entry: InitialEntry, options: AppStubOptions = {}) => {
+  const api = stubApi(options);
+
   render(
     <MemoryRouter initialEntries={[entry]}>
-      <AuthProvider api={stubApi(options) as unknown as ApiClient}>
+      <AuthProvider api={api as unknown as ApiClient}>
         <App />
         <LocationProbe />
       </AuthProvider>
     </MemoryRouter>,
   );
+
+  return api;
 };
 
 export const currentPath = () => screen.getByTestId('location').textContent;
