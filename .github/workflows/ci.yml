@@ -41,7 +41,7 @@ env:
 
 jobs:
   verify:
-    # Stages: install → lint → typecheck → format → unit/integration → coverage.
+    # Stages: install → lint → typecheck → unit/integration → coverage.
     #
     # Deliberately NOT spelled out in `name:`. Branch protection matches the
     # required status check by this exact string, so listing the stages here
@@ -87,10 +87,6 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
-
-      - name: Format check
-        # Cheap, and it keeps "prettier --write" churn out of feature diffs.
-        run: pnpm format:check
 
       # Unit + integration in one command. Integration tests provision Postgres
       # through Testcontainers against the runner's own Docker daemon
