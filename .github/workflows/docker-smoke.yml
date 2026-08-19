@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           cp .env.example .env
-          for key in POSTGRES_USER POSTGRES_DB BACKEND_PORT FRONTEND_PORT \
+          for key in POSTGRES_USER POSTGRES_DB FRONTEND_PORT \
                      MAILPIT_UI_PORT MAILPIT_SMTP_PORT; do
             # Strip any inline comment and surrounding whitespace: an unstripped
             # value would corrupt $GITHUB_ENV rather than fail visibly.
@@ -84,15 +84,20 @@ jobs:
         # The healthchecks are TCP-level and run inside each container, so they
         # stay green even when a port publish is broken. These requests come
         # from the host and prove the services are reachable and serving.
+        #
+        # The backend is reached through the frontend origin because the base
+        # stack publishes no backend port (see TRUST_PROXY in .env.example) — so
+        # this also asserts the thing that replaced it: that nginx really does
+        # proxy the API, which is now the only way a browser can reach it.
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 5 --retry-delay 2 \
             "http://localhost:${MAILPIT_UI_PORT}/readyz"
           curl --fail --silent --show-error --retry 5 --retry-delay 2 \
-            "http://localhost:${BACKEND_PORT}/health"
+            "http://localhost:${FRONTEND_PORT}/health"
           curl --fail --silent --show-error --retry 5 --retry-delay 2 \
             "http://localhost:${FRONTEND_PORT}/" > /dev/null
-          echo "Mailpit, backend and frontend all responded."
+          echo "Mailpit, backend (through nginx) and frontend all responded."
 
       - name: Assert Mailpit captures mail over SMTP
         # Mailpit exists to be the capture point for every notification, and the

@@ -30,3 +30,9 @@ allowBuilds:
   cpu-features: false
   protobufjs: false
   ssh2: false
+
+  # Arrives under sass (E1.5). Its build script compiles the native file-watcher
+  # sass uses for its own `--watch` CLI, which nothing here runs: Vite compiles
+  # SCSS through sass's compile API and owns the watching itself. Denied rather
+  # than left unanswered so `pnpm install` stays silent.
+  '@parcel/watcher': false

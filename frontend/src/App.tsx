@@ -1,15 +1,27 @@
-/**
- * Scaffold shell (ticket 0.2).
- *
- * It exists so the Vite dev server has something to hot-reload and the
- * production build has something to emit. Routing, the auth provider and the
- * real views land in their own tickets — see PROJECT_STRUCTURE.md §3.
- */
-export function App() {
-  return (
-    <main>
-      <h1>PhysioBook</h1>
-      <p>Scaffold running. Edit this file — the change should appear without a reload.</p>
-    </main>
+import { Route, Routes } from 'react-router';
+
+import { AuthGate } from './features/auth/AuthGate';
+import { AppNav } from './routes/AppNav';
+import { RequireRole } from './routes/RequireRole';
+import { routeConfig, type AppRoute } from './routes/route-config';
+
+const elementFor = ({ Component, requires }: AppRoute) =>
+  requires === undefined ? (
+    <Component />
+  ) : (
+    <RequireRole role={requires}>
+      <Component />
+    </RequireRole>
   );
-}
+
+export const App = () => (
+  <AuthGate>
+    <AppNav />
+
+    <Routes>
+      {routeConfig.map((route) => (
+        <Route key={route.path} path={route.path} element={elementFor(route)} />
+      ))}
+    </Routes>
+  </AuthGate>
+);

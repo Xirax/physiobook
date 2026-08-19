@@ -10,8 +10,8 @@ import { defineConfig } from 'vitest/config';
  * still keeps its own config file next to the code it tests, so package
  * boundaries are intact — this file only composes them.
  *
- * Projects are added as their packages grow tests: frontend joins with React
- * Testing Library in E2, shared/db when they hold real code. Listing an empty
+ * Projects are added as their packages grow tests: frontend joined with React
+ * Testing Library in E1.5, shared/db when they hold real code. Listing an empty
  * package here today would only buy a permanently-passing no-op suite.
  */
 
@@ -38,7 +38,7 @@ if (!Number.isFinite(coverageThreshold) || coverageThreshold < 0 || coverageThre
 
 export default defineConfig({
   test: {
-    projects: ['backend'],
+    projects: ['backend', 'frontend'],
 
     coverage: {
       provider: 'v8',
@@ -64,15 +64,23 @@ export default defineConfig({
       // should not chase them: the migration runner executes in Vitest's
       // globalSetup, which the provider does not instrument, and seed.ts is a
       // dev/demo script no test may depend on.
-      include: ['backend/src/**/*.ts', 'db/src/**/*.ts', 'shared/src/**/*.ts'],
+      include: [
+        'backend/src/**/*.ts',
+        'db/src/**/*.ts',
+        'shared/src/**/*.ts',
+        'frontend/src/**/*.{ts,tsx}',
+      ],
       exclude: [
         // Boots the server and listens; it is exercised by the docker smoke
         // workflow and, from E7, by Playwright — never by a unit test.
         'backend/src/index.ts',
+        // The client's equivalent: it mounts the tree into a real document, so
+        // Playwright is what exercises it, not jsdom.
+        'frontend/src/main.tsx',
         // Test files are co-located with the code they cover (PROJECT_STRUCTURE.md
         // §4). `all: true` would otherwise report the suite's own coverage of
         // itself, inflating every number with files that are 100% by definition.
-        '**/*.test.ts',
+        '**/*.test.{ts,tsx}',
       ],
 
       thresholds: {

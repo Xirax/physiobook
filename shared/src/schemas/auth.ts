@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 export const PASSWORD_MIN_BYTES = 8;
 export const PASSWORD_MAX_BYTES = 72;
+export const EMAIL_MAX_LENGTH = 254;
+export const FULL_NAME_MAX_LENGTH = 200;
 
 const byteLength = (value: string): number => {
   let bytes = 0;
@@ -27,9 +29,23 @@ export const passwordSchema = z
     message: `Password must be at most ${String(PASSWORD_MAX_BYTES)} bytes long`,
   });
 
-export const emailSchema = z.email().max(254);
+// These messages reach a person: the API returns them in an error response's
+// `details`, and the client renders the same strings inline under the field.
+// Zod's defaults ("Too small: expected string to have >=1 characters") describe
+// a schema, not a mistake a user can act on.
+export const emailSchema = z
+  .email({ message: 'Enter a valid email address' })
+  .max(EMAIL_MAX_LENGTH, {
+    message: `Email must be at most ${String(EMAIL_MAX_LENGTH)} characters`,
+  });
 
-export const fullNameSchema = z.string().trim().min(1).max(200);
+export const fullNameSchema = z
+  .string()
+  .trim()
+  .min(1, { message: 'Enter your full name' })
+  .max(FULL_NAME_MAX_LENGTH, {
+    message: `Name must be at most ${String(FULL_NAME_MAX_LENGTH)} characters`,
+  });
 
 export const roleSchema = z.enum(['user', 'admin']);
 
@@ -41,7 +57,10 @@ export const registerRequestSchema = z.strictObject({
   full_name: fullNameSchema,
 });
 
-export const loginPasswordSchema = z.string().min(1).max(1024);
+// Deliberately not `passwordSchema`: login checks a password that already
+// exists, so restating the strength rules here would tell someone with an older
+// password that their own credential is invalid before it is even sent.
+export const loginPasswordSchema = z.string().min(1, { message: 'Enter your password' }).max(1024);
 
 export const loginRequestSchema = z.strictObject({
   email: emailSchema,

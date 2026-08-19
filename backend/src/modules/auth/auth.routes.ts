@@ -2,6 +2,7 @@ import {
   authResponseSchema,
   errorResponseSchema,
   loginRequestSchema,
+  publicUserSchema,
   refreshResponseSchema,
   registerRequestSchema,
 } from '@physiobook/shared';
@@ -14,6 +15,7 @@ import { authenticatedUser } from '../../plugins/auth.js';
 import { REFRESH_COOKIE_NAME } from '../../plugins/cookie.js';
 import { RATE_LIMITED_ROUTE, rateLimitedRoute } from '../../plugins/rate-limit.js';
 import {
+  findUserById,
   loginUser,
   refreshSession,
   registerUser,
@@ -81,6 +83,20 @@ export async function authRoutes(
       },
     },
     async (request, reply) => respond(reply, await loginUser(request.body, dependencies)),
+  );
+
+  typed.get(
+    '/auth/me',
+    {
+      onRequest: app.requireAuth,
+      schema: {
+        response: {
+          200: publicUserSchema,
+          401: errorResponseSchema,
+        },
+      },
+    },
+    async (request) => findUserById(authenticatedUser(request).id, dependencies),
   );
 
   await app.register(async (bodyless) => {

@@ -100,8 +100,14 @@ services:
       TRUST_PROXY: ${TRUST_PROXY}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
-    ports:
-      - '${BACKEND_PORT}:${BACKEND_PORT}'
+    # Deliberately NOT published. The frontend container proxies /auth to this
+    # service, and TRUST_PROXY=1 makes the API take the client address from the
+    # X-Forwarded-For that proxy writes. A second, direct route in from the host
+    # would be a route on which the client writes that header itself — and the
+    # auth rate limit, which exists to make password guessing expensive, would
+    # be evadable by varying it. One way in is what keeps the limit honest.
+    # Reach the API through the frontend origin; the dev override republishes
+    # this port for debugging.
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,0 +1,9 @@
+.page {
+  width: min(60rem, 100%);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-4);
+}
+
+.lead {
+  color: var(--colour-text-muted);
+}
