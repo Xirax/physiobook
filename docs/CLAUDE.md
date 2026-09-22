@@ -46,10 +46,11 @@ physiobook/
 ├── db/         Drizzle schema, migrations, seeds  (source of truth for the data model)
 ├── shared/     Zod schemas + inferred types       (the API contract, imported by both sides)
 ├── e2e/        Playwright cross-package tests
-├── docker/     Dockerfiles + postgres/init.sql (enables btree_gist)
+├── docker/     Dockerfiles + postgres/init.sql (enables btree_gist + citext)
+├── docs/       BACKLOG.csv — the sequenced plan of record (see §5) · REQUIREMENTS.md · SCHEMA.md
 ├── docker-compose.yml        postgres · mailpit · backend · frontend
 ├── tsconfig.base.json        strict options every package extends
-└── .github/workflows/ci.yml  lint → typecheck → unit/integration → e2e → coverage
+└── .github/workflows/ci.yml  lint → typecheck → format → unit/integration → coverage  (e2e added in E7)
 ```
 
 **Boundary rules:**
@@ -79,12 +80,13 @@ Full detail: `REQUIREMENTS.md` and `SCHEMA.md`. If code and these docs disagree,
 ## 5. Golden rules for every agent
 
 1. **Tests ship with the code.** A feature PR without its tests is incomplete. No exceptions.
-2. **Prove correctness against real Postgres.** Race, overlap, and constraint tests run on Testcontainers/CI service Postgres — never a mock.
+2. **Prove correctness against real Postgres.** Race, overlap, and constraint tests run on the Testcontainers harness — the **same harness locally and in CI** (Docker on the runner), with no separate service-container path — never a mock.
 3. **Validate at the boundary with the `shared/` Zod schemas.** Trust nothing from the client.
-4. **Keep the four goals intact** (§1). Flag any change that risks them.
-5. **Small, focused PRs**, one ticket each, with a clear description and the tests that prove it.
-6. **Ask when the spec is ambiguous.** Don't invent domain behaviour — surface the question.
-7. **No secrets in code.** Everything through validated env (`backend/src/config/env.ts`); update `.env.example` when you add a variable.
+4. **Follow the plan of record — `docs/BACKLOG.csv`.** The backlog is an official part of this repo, not a scratch artifact. Respect ticket dependencies and don't build a story whose foundation isn't merged; when a decision is made mid-implementation, **update the affected ticket in place** (description / acceptance criteria / tests); and set a story's **`Status` to `Done`** when it merges. A divergence between the code and the backlog is a discrepancy to flag and reconcile, exactly like the docs in §4 — never a silent drift.
+5. **Keep the four goals intact** (§1). Flag any change that risks them.
+6. **Small, focused PRs**, one ticket each, with a clear description and the tests that prove it.
+7. **Ask when the spec is ambiguous.** Don't invent domain behaviour — surface the question.
+8. **No secrets in code.** Everything through validated env (`backend/src/config/env.ts`); update `.env.example` when you add a variable.
 
 ---
 
@@ -92,7 +94,7 @@ Full detail: `REQUIREMENTS.md` and `SCHEMA.md`. If code and these docs disagree,
 
 - **Branches:** `type/ticket-id-short-desc` (e.g. `feat/3.2-book-appointment`).
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `test:`, `chore:`, `refactor:`).
-- **Definition of Done:** acceptance criteria met · tests written and green · lint + typecheck clean · coverage gate passing · docs updated if behaviour changed.
+- **Definition of Done:** acceptance criteria met · tests written and green · lint + typecheck clean · coverage gate passing · docs updated if behaviour changed · **backlog ticket marked `Done`** (§5).
 - **Before opening a PR:** run `pnpm -r lint`, `pnpm -r typecheck`, and the test suite locally.
 
 When in doubt, optimise for a codebase that is **obviously correct and fully tested**, not clever.
