@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
 import { authRoutes } from './modules/auth/auth.routes.js';
+import { settingsRoutes } from './modules/settings/settings.routes.js';
 import authPlugin from './plugins/auth.js';
 import cookiePlugin from './plugins/cookie.js';
 import databasePlugin from './plugins/db.js';
@@ -53,6 +54,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     refreshRateLimitMax: options.rateLimit.refreshMax,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+
+  await app.register(settingsRoutes);
 
   return app;
 }

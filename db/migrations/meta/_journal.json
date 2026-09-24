@@ -22,6 +22,20 @@
       "when": 1786473057117,
       "tag": "0002_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790273495054,
+      "tag": "0003_practice_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790273525609,
+      "tag": "0004_practice_settings_updated_at_and_seed",
+      "breakpoints": true
     }
   ]
 }
