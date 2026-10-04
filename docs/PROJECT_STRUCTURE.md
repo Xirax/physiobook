@@ -137,6 +137,10 @@ backend/
 │   │   │   ├── appointments.service.ts      # booking, cancel, race handling
 │   │   │   └── appointments.test.ts
 │   │   ├── availability/     # admin business hours + time off
+│   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
+│   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction
+│   │   │   ├── business-hours.test.ts     # inject(): validation, roles, no partial write
+│   │   │   └── business-hours.service.test.ts  # DB rollback + concurrent-replace race
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
 │   ├── jobs/
@@ -155,7 +159,8 @@ backend/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   │   ├── test-database.test.ts        # proves the harness migrates and isolates
 │   │   ├── users.test.ts                # citext email, single-admin index, updated_at trigger
-│   │   └── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
+│   │   ├── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
+│   │   └── business-hours.test.ts       # day_of_week range + closes_after_opens CHECKs
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
@@ -203,7 +208,7 @@ db/
 │   │   ├── users.ts          # uuid pk, citext email, role enum, single-admin partial index
 │   │   ├── sessions.ts       # login sessions (id, user_id, token_hash, expires_at, revoked_at) — backs refresh/logout
 │   │   ├── appointments.ts   # incl. unique + EXCLUDE (btree_gist) constraints
-│   │   ├── availability.ts   # business hours + time off
+│   │   ├── business-hours.ts # weekly windows: day_of_week + TIME open/close, per-row CHECKs
 │   │   └── index.ts          # re-exports all tables (what drizzle.config.ts reads)
 │   ├── client.ts             # creates the Drizzle client (node-postgres) from a connection string
 │   ├── migrate.ts            # migration runner: `db:migrate` CLI + runMigrations() for the test harness
@@ -253,7 +258,7 @@ shared/
 ├── src/
 │   ├── schemas/              # Zod schemas for requests & responses
 │   │   ├── appointment.ts
-│   │   ├── availability.ts
+│   │   ├── business-hours.ts # weekly windows: HH:MM, close > open, no same-day overlap
 │   │   ├── auth.ts           # register/login payloads (register: password min 8 / max 72 bytes for bcrypt)
 │   │   └── error.ts          # the one error body: { code, message, details? } + the closed code list
 │   ├── types/                # types inferred from the schemas
