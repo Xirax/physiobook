@@ -96,6 +96,7 @@ Weekly recurring availability. The admin edits these freely; they define which s
 | `closes_at`   | `time`     | `CHECK (closes_at > opens_at)`                              |
 
 - Multiple rows per day allow split shifts (e.g. 09:00–13:00 and 15:00–18:00).
+- **No same-day overlap** is a cross-row rule, enforced by the shared Zod contract rather than the database (windows are half-open, so 09:00–12:00 and 12:00–15:00 touch without overlapping). That is sound because the only writer, `PUT /business-hours` (E2.2), replaces the whole week in one transaction that first takes `LOCK TABLE business_hours IN SHARE ROW EXCLUSIVE MODE`: two concurrent replaces would otherwise each delete only the rows their snapshot saw and commit the union of two weeks. The lock does not block reads, so `GET` serves the previous week until the replace commits.
 - Not a hard DB constraint on bookings — the API validates that a requested slot falls inside an open window. (Enforcing it purely in the DB would over-complicate the schema; it's covered by service logic + tests.)
 
 ---
