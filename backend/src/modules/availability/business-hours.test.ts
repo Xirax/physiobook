@@ -169,6 +169,19 @@ describe('/business-hours', () => {
       expect(await storedWeek()).toEqual(STANDARD_WEEK);
     });
 
+    it('Reports only the format error, not a false overlap, for a malformed time', async () => {
+      // As text, '10:00' < '9:00', so an unguarded overlap check would flag window 1.
+      const response = await put(
+        { windows: [window(1, '08:00', '9:00'), window(1, '10:00', '11:00')] },
+        adminToken,
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().details).toEqual([
+        expect.objectContaining({ path: 'windows/0/closes_at' }),
+      ]);
+    });
+
     it.each([
       ['an unknown window field', { windows: [{ ...window(1, '09:00', '12:00'), id: 'x' }] }],
       ['an unknown top-level field', { windows: [], timezone: 'UTC' }],

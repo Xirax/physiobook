@@ -54,13 +54,17 @@ function findSameDayOverlaps(windows: Window[]): number[] {
 }
 
 export const weeklyBusinessHoursSchema = z.strictObject({
-  windows: z.array(businessHoursWindowSchema).superRefine((windows, context) => {
-    for (const index of findSameDayOverlaps(windows)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Overlaps another window on the same day',
-        path: [index],
-      });
-    }
-  }),
+  windows: z.array(businessHoursWindowSchema).superRefine(
+    (windows, context) => {
+      for (const index of findSameDayOverlaps(windows)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Overlaps another window on the same day',
+          path: [index],
+        });
+      }
+    },
+    // A malformed time would compare wrongly as text and report a false overlap.
+    { when: (payload) => payload.issues.length === 0 },
+  ),
 });
