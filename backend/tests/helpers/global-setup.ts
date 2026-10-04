@@ -62,6 +62,16 @@ declare module 'vitest' {
   }
 }
 
+/**
+ * Crash safety switched off — the container is thrown away, so there is no
+ * crash to survive. Every `DROP DATABASE` forces a checkpoint and waits for it,
+ * and with durability on that checkpoint fsyncs whatever every parallel test
+ * file has written; under coverage, on Docker Desktop's disk, it outran the
+ * 10 s hook timeout in files that only create and drop a clone. Constraints,
+ * locking and isolation — what these tests prove — do not depend on these.
+ */
+const THROWAWAY_DURABILITY = ['fsync=off', 'synchronous_commit=off', 'full_page_writes=off'];
+
 export default async function setup(project: TestProject): Promise<() => Promise<void>> {
   // No init script is mounted into /docker-entrypoint-initdb.d, on purpose: the
   // image would run it against the container's *default* database, which no
@@ -69,7 +79,9 @@ export default async function setup(project: TestProject): Promise<() => Promise
   // the template below is what actually puts btree_gist in the databases tests
   // get — and it is the same file the compose Postgres loads, which is the
   // property that matters (PROJECT_STRUCTURE.md §5).
-  const container = await new PostgreSqlContainer(POSTGRES_IMAGE).start();
+  const container = await new PostgreSqlContainer(POSTGRES_IMAGE)
+    .withCommand(['postgres', ...THROWAWAY_DURABILITY.flatMap((setting) => ['-c', setting])])
+    .start();
   const adminUri = container.getConnectionUri();
 
   try {

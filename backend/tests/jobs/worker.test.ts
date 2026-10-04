@@ -129,6 +129,15 @@ describe('worker', () => {
     expect(await jobState(id ?? '')).toBe('completed');
   });
 
+  it('closes the health server even when stopping pg-boss fails', async () => {
+    const running = await launch();
+    vi.spyOn(running.boss, 'stop').mockRejectedValueOnce(new Error('stop failed'));
+
+    await expect(running.close()).rejects.toThrow('stop failed');
+
+    expect(running.health.server.listening).toBe(false);
+  });
+
   it('keeps running when pg-boss reports an error', async () => {
     const running = await launch();
 

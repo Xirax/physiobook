@@ -30,14 +30,16 @@ export interface Worker {
   close: () => Promise<void>;
 }
 
-export function buildHealthServer(boss: PgBoss, logger = true): FastifyInstance {
+function createHealthServer(logger: boolean): FastifyInstance {
   // The healthcheck polls every few seconds; logging each probe would bury
   // the job logs this process exists to produce.
-  const app = Fastify({
+  return Fastify({
     logger,
     logController: new LogController({ disableRequestLogging: true }),
   });
+}
 
+function registerHealthCheck(app: FastifyInstance, boss: PgBoss): void {
   app.get('/health', async (_request, reply) => {
     try {
       await boss.getDb().executeSql('SELECT 1');
@@ -47,6 +49,11 @@ export function buildHealthServer(boss: PgBoss, logger = true): FastifyInstance 
       return reply.code(503).send({ status: 'unavailable' });
     }
   });
+}
+
+export function buildHealthServer(boss: PgBoss, logger = true): FastifyInstance {
+  const app = createHealthServer(logger);
+  registerHealthCheck(app, boss);
 
   return app;
 }
@@ -57,6 +64,7 @@ export async function startWorker({
   handlers = defaultHandlers,
   logger = true,
 }: WorkerOptions): Promise<Worker> {
+  const health = createHealthServer(logger);
   const boss = createBoss({
     connectionString,
     role: 'worker',
@@ -64,7 +72,7 @@ export async function startWorker({
       health.log.error(error, 'pg-boss error');
     },
   });
-  const health = buildHealthServer(boss, logger);
+  registerHealthCheck(health, boss);
 
   await startBoss(boss);
 
@@ -83,8 +91,46 @@ export async function startWorker({
     boss,
     health,
     close: async () => {
-      await boss.stop({ graceful: true, timeout: SHUTDOWN_TIMEOUT_MS });
-      await health.close();
+      try {
+        await boss.stop({ graceful: true, timeout: SHUTDOWN_TIMEOUT_MS });
+      } finally {
+        await health.close();
+      }
     },
   };
+}
+
+const SHUTDOWN_SIGNALS = ['SIGTERM', 'SIGINT'] as const;
+
+/**
+ * Runs a worker until SIGTERM/SIGINT, then drains it; resolves the exit code.
+ * The signal listeners go on before `start()`, so a stop requested mid-boot
+ * still drains instead of killing the process with Node's default 143.
+ */
+export async function runWorker(
+  start: () => Promise<Worker>,
+  signals: NodeJS.EventEmitter = process,
+): Promise<number> {
+  const signalled = new Promise<NodeJS.Signals>((resolve) => {
+    for (const signal of SHUTDOWN_SIGNALS) {
+      signals.once(signal, () => {
+        resolve(signal);
+      });
+    }
+  });
+
+  const worker = await start();
+  const signal = await signalled;
+
+  worker.health.log.info({ signal }, 'draining in-flight jobs before exit');
+
+  try {
+    await worker.close();
+
+    return 0;
+  } catch (error) {
+    worker.health.log.error(error, 'error during shutdown');
+
+    return 1;
+  }
 }

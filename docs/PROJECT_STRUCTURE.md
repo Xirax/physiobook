@@ -144,10 +144,10 @@ backend/
 │   │   │   └── business-hours.service.test.ts  # DB rollback + concurrent-replace race
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
-│   ├── worker.ts             # worker process entrypoint: validated env → startWorker, SIGTERM → drain
+│   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
 │   ├── jobs/
 │   │   ├── boss.ts           # shared pg-boss config: queue names, createBoss/startBoss, JobQueue
-│   │   ├── worker.ts         # startWorker(): registers handlers + tiny /health server
+│   │   ├── worker.ts         # startWorker(): handlers + tiny /health; runWorker(): signal → drain → exit code
 │   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
 │   │   └── reminders.job.ts  # 24h reminder logic (incl. admin grouping)
 │   └── lib/
@@ -156,14 +156,15 @@ backend/
 ├── tests/
 │   ├── helpers/
 │   │   ├── test-app.ts       # builds Fastify app for `.inject()`
-│   │   ├── global-setup.ts   # Vitest globalSetup: boot Postgres once → load init.sql → migrate a template
+│   │   ├── global-setup.ts   # Vitest globalSetup: boot Postgres once (durability off) → load init.sql → migrate a template
 │   │   ├── test-db.ts        # clones that template into a fresh DB per test file
 │   │   └── postgres-uri.ts   # retargets a connection URI at another database
 │   ├── db/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   │   ├── test-database.test.ts        # proves the harness migrates and isolates
 │   │   ├── users.test.ts                # citext email, single-admin index, updated_at trigger
-│   │   └── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
+│   │   ├── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
+│   │   └── business-hours.test.ts       # day_of_week range + closes_after_opens CHECKs
 │   ├── jobs/
 │   │   ├── boss.test.ts                 # schema created on start, queues, API + worker co-start
 │   │   ├── worker.test.ts               # exactly-once no-op, /health, graceful drain
@@ -176,7 +177,7 @@ backend/
 ```
 
 - **Route/service tests** are co-located per module (`*.test.ts`) and use Fastify `.inject()`.
-- **DB-backed and race tests** use the Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path. `global-setup.ts` boots **one** container per run and leaves a **template database** behind (init.sql applied, migrations applied via the `db` package's own runner); `createTestDatabase()` clones it per test file, which costs milliseconds instead of a container boot. Because the setup is unconditional, **any** backend test run needs Docker — including one that only touches unit tests.
+- **DB-backed and race tests** use the Testcontainers harness against a real Postgres — the **same** harness runs locally and in CI (Docker on the runner), so there is no separate CI database path. `global-setup.ts` boots **one** container per run and leaves a **template database** behind (init.sql applied, migrations applied via the `db` package's own runner); `createTestDatabase()` clones it per test file, which costs milliseconds instead of a container boot. Because the setup is unconditional, **any** backend test run needs Docker — including one that only touches unit tests. The container runs with **`fsync`, `synchronous_commit` and `full_page_writes` off** (4.1): every `DROP DATABASE` forces and waits for a checkpoint, and with durability on, a checkpoint under parallel coverage runs outlasted the 10 s hook timeout. Constraint, locking and isolation semantics — what the suite proves — are unaffected; only crash safety of a throwaway container is given up.
 - The **auth plugin** does a per-request session lookup so `/auth/logout` (which revokes the session) takes effect immediately, killing even a still-valid 15-min access token.
 - **The guards are `requireAuth` and `requireRole(...roles)` (E1.4)**, decorated onto the instance by `plugins/auth.ts` and applied per route as an **`onRequest`** hook. Six decisions worth not re-deriving:
   - **`onRequest`, not `preHandler` — the ordering is load-bearing.** `preHandler` runs _after_ body parsing and schema validation, so an anonymous caller posting a malformed body to a guarded route is answered `400 VALIDATION_FAILED` with the field names and shape of a contract it was never authenticated to see, and never reaches the 401 the ticket requires. The guards read only `request.headers.authorization`, so they need nothing the parsing stage produces — which is why `@fastify/jwt` puts the same check at `onRequest` too. Copy `onRequest:` when guarding a new route; the sample route in the test suite carries a body schema specifically so this cannot silently regress.
@@ -206,7 +207,7 @@ backend/
   - **One config module, two roles.** `jobs/boss.ts` builds the instance for both sides so they agree on schema and queue names. The API's role (`plugins/jobs.ts`) only ever sees a `JobQueue` (`send`), never `work`; supervision/maintenance and cron run in the worker alone. pg-boss creates its own `pgboss` schema on `start()` — no Drizzle migration owns it — and every queue in `QUEUES` is created on start by both roles (idempotent).
   - **The worker needs no API secrets.** It loads `loadWorkerEnv()` (`DATABASE_URL`, `WORKER_HEALTH_PORT`/`HOST`), not the API's schema, so `JWT_SECRET` never reaches that container.
   - **`/health` is HTTP-level, not TCP.** It runs `SELECT 1` through pg-boss's own pool and answers 503 when that fails, which a port probe cannot see. Request logging is off on that server; the probe runs every 5 s.
-  - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })`, and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first.
+  - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })` (the health server closes in a `finally`), and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first. `runWorker()` subscribes to SIGTERM/SIGINT **before** boot, so a stop requested mid-start still drains and exits 0 rather than Node's default 143.
   - **Handlers are injected** (`startWorker({ handlers })`), so tests can wrap the real handler and count invocations against a real Postgres.
 
 ---

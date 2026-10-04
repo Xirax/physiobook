@@ -34,6 +34,20 @@ describe('test database harness', () => {
     expect(result.rows[0]?.count).toBe('1');
   });
 
+  it('runs on a server with durability off, so DROP DATABASE checkpoints stay cheap', async () => {
+    const settings = await database.pool.query<{ name: string; setting: string }>(
+      `SELECT name, setting FROM pg_settings
+        WHERE name IN ('fsync', 'synchronous_commit', 'full_page_writes')
+        ORDER BY name`,
+    );
+
+    expect(settings.rows).toEqual([
+      { name: 'fsync', setting: 'off' },
+      { name: 'full_page_writes', setting: 'off' },
+      { name: 'synchronous_commit', setting: 'off' },
+    ]);
+  });
+
   it('gives each caller an isolated database', async () => {
     // Two clones in one file, so the assertion is deterministic — proving it
     // across files would depend on the order Vitest happened to run them in.
