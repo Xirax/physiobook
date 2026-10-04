@@ -59,8 +59,9 @@ services:
       # image's filtered install doesn't cover the whole workspace; without a TTY
       # that aborts (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY) and the container
       # crash-loops. Deps are baked into the image, so skip the check. pnpm reads
-      # its own prefix (pnpm_config_), not npm_config_.
-      pnpm_config_verify-deps-before-run: 'false'
+      # its own prefix (pnpm_config_), not npm_config_, and only in snake_case —
+      # a dashed name is silently ignored.
+      pnpm_config_verify_deps_before_run: 'false'
     # The whole workspace, so a change in shared/ or db/ reloads the API too.
     volumes: *dev-volumes
     develop:
@@ -84,8 +85,9 @@ services:
       # image's filtered install doesn't cover the whole workspace; without a TTY
       # that aborts (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY) and the container
       # crash-loops. Deps are baked into the image, so skip the check. pnpm reads
-      # its own prefix (pnpm_config_), not npm_config_.
-      pnpm_config_verify-deps-before-run: 'false'
+      # its own prefix (pnpm_config_), not npm_config_, and only in snake_case —
+      # a dashed name is silently ignored.
+      pnpm_config_verify_deps_before_run: 'false'
       # Lets the HMR client in the browser connect back on the published port.
       FRONTEND_PORT: ${FRONTEND_PORT}
       BACKEND_ORIGIN: http://backend:${BACKEND_PORT}
