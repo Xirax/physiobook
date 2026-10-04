@@ -8,6 +8,7 @@ import authPlugin from './plugins/auth.js';
 import cookiePlugin from './plugins/cookie.js';
 import databasePlugin from './plugins/db.js';
 import errorHandlerPlugin from './plugins/error-handler.js';
+import jobsPlugin from './plugins/jobs.js';
 import rateLimitPlugin from './plugins/rate-limit.js';
 
 export interface RateLimitOptions {
@@ -39,6 +40,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
 
   await app.register(errorHandlerPlugin);
   await app.register(databasePlugin, { connectionString: options.databaseUrl });
+  await app.register(jobsPlugin, { connectionString: options.databaseUrl });
   await app.register(cookiePlugin, { secure: options.secureCookies });
   await app.register(rateLimitPlugin, options.rateLimit);
   await app.register(authPlugin, {

@@ -1,4 +1,4 @@
-# PhysioBook — base stack: postgres · mailpit · backend · frontend.
+# PhysioBook — base stack: postgres · mailpit · backend · worker · frontend.
 #
 # This file is the CI/production-like definition: images are built from the
 # Dockerfiles in docker/, nothing is bind-mounted, and the app services run
@@ -123,6 +123,44 @@ services:
           'node',
           '-e',
           "require('node:net').connect(Number(process.env.BACKEND_PORT),'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # pg-boss consumer (ticket 4.1): same image as the API, different entrypoint,
+  # so slow work never runs inside a request. It shares the API's database —
+  # pg-boss keeps its tables in their own `pgboss` schema.
+  worker:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: runtime
+    command: ['node', 'dist/worker.js']
+    environment:
+      NODE_ENV: ${NODE_ENV}
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT}
+    # Not published: /health exists for the healthcheck below, nothing else.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # SIGTERM drains in-flight jobs for up to SHUTDOWN_TIMEOUT_MS (20s,
+    # backend/src/jobs/worker.ts). Docker's default 10s grace would SIGKILL it
+    # mid-drain, so this must stay above that timeout.
+    stop_grace_period: 30s
+    healthcheck:
+      # HTTP-level, unlike the API's TCP probe: the port can listen while
+      # pg-boss has lost the database, and /health is what notices. The `||3001`
+      # mirrors config/env.ts: a blank WORKER_HEALTH_PORT boots the worker on its
+      # default, and the probe has to look there too.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:'+(process.env.WORKER_HEALTH_PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
         ]
       interval: 5s
       timeout: 5s

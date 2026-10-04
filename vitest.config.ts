@@ -74,6 +74,7 @@ export default defineConfig({
         // Boots the server and listens; it is exercised by the docker smoke
         // workflow and, from E7, by Playwright — never by a unit test.
         'backend/src/index.ts',
+        'backend/src/worker.ts',
         // The client's equivalent: it mounts the tree into a real document, so
         // Playwright is what exercises it, not jsdom.
         'frontend/src/main.tsx',

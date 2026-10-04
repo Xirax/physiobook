@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 #
-# Backend image — Fastify API (and, from E6, the pg-boss worker).
+# Backend image — Fastify API and the pg-boss worker (4.1): one image, two
+# entrypoints (dist/index.js, dist/worker.js) chosen by the compose `command`.
 # Build context is the REPO ROOT, not backend/: pnpm needs the workspace root
 # manifests and the single lockfile to resolve a workspace install.
 

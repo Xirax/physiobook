@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { DEVELOPMENT_JWT_SECRET, JWT_SECRET_MIN_LENGTH, loadEnv } from './env.js';
+import { DEVELOPMENT_JWT_SECRET, JWT_SECRET_MIN_LENGTH, loadEnv, loadWorkerEnv } from './env.js';
 
 describe('loadEnv', () => {
   const valid = {
@@ -193,5 +193,35 @@ describe('loadEnv', () => {
 
       expect(envExample).toContain(`JWT_SECRET=${DEVELOPMENT_JWT_SECRET}`);
     });
+  });
+});
+
+describe('loadWorkerEnv', () => {
+  const valid = { DATABASE_URL: 'postgres://user:pw@localhost:5432/physiobook' };
+
+  it('Boots without any of the API secrets and applies defaults', () => {
+    const env = loadWorkerEnv(valid);
+
+    expect(env).toEqual({
+      NODE_ENV: 'development',
+      DATABASE_URL: valid.DATABASE_URL,
+      WORKER_HEALTH_PORT: 3001,
+      WORKER_HEALTH_HOST: '0.0.0.0',
+    });
+  });
+
+  it('Coerces the health port and treats a blank one as unset', () => {
+    expect(loadWorkerEnv({ ...valid, WORKER_HEALTH_PORT: '4001' }).WORKER_HEALTH_PORT).toBe(4001);
+    expect(loadWorkerEnv({ ...valid, WORKER_HEALTH_PORT: '' }).WORKER_HEALTH_PORT).toBe(3001);
+  });
+
+  it('Rejects a missing DATABASE_URL, naming the worker', () => {
+    expect(() => loadWorkerEnv({})).toThrow(/worker cannot start[\s\S]*DATABASE_URL/);
+  });
+
+  it('Rejects an out-of-range health port', () => {
+    expect(() => loadWorkerEnv({ ...valid, WORKER_HEALTH_PORT: '70000' })).toThrow(
+      /WORKER_HEALTH_PORT/,
+    );
   });
 });

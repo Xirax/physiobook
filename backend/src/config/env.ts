@@ -126,8 +126,26 @@ export const envSchema = z.preprocess(
 
 export type Env = z.infer<typeof envSchema>;
 
-export function loadEnv(source: Record<string, string | undefined> = process.env): Env {
-  const result = envSchema.safeParse(source);
+/**
+ * The worker is its own process and needs none of the API's secrets: asking it
+ * for JWT_SECRET would only spread a key to a container that never signs.
+ */
+export const workerEnvSchema = z.preprocess(
+  blankToUndefined,
+  z.object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    DATABASE_URL: z.url(),
+    WORKER_HEALTH_PORT: z.coerce.number().int().positive().max(65_535).default(3001),
+    WORKER_HEALTH_HOST: z.string().min(1).default('0.0.0.0'),
+  }),
+);
+
+export type WorkerEnv = z.infer<typeof workerEnvSchema>;
+
+type EnvSource = Record<string, string | undefined>;
+
+function parseEnv<T>(schema: z.ZodType<T>, source: EnvSource, processName: string): T {
+  const result = schema.safeParse(source);
 
   if (!result.success) {
     const problems = result.error.issues
@@ -135,10 +153,18 @@ export function loadEnv(source: Record<string, string | undefined> = process.env
       .join('\n');
 
     throw new Error(
-      `Invalid environment — the server cannot start:\n${problems}\n\n` +
+      `Invalid environment — the ${processName} cannot start:\n${problems}\n\n` +
         'See .env.example for what each variable expects.',
     );
   }
 
   return result.data;
+}
+
+export function loadEnv(source: EnvSource = process.env): Env {
+  return parseEnv(envSchema, source, 'server');
+}
+
+export function loadWorkerEnv(source: EnvSource = process.env): WorkerEnv {
+  return parseEnv(workerEnvSchema, source, 'worker');
 }
