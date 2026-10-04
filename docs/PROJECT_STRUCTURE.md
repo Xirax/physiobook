@@ -37,7 +37,7 @@ physiobook/
 │   └── workflows/
 │       ├── ci.yml            # lint → typecheck → unit/integration → coverage (e2e added in E7)
 │       └── docker-smoke.yml  # compose up → healthchecks → btree_gist → down
-├── docker-compose.yml        # Postgres + Mailpit + backend + frontend
+├── docker-compose.yml        # Postgres + Mailpit + backend + worker + frontend
 ├── docker-compose.override.yml   # local dev tweaks (hot reload w/ polling, exposed ports); auto-applied
 ├── .dockerignore             # keeps host node_modules and .env out of build contexts
 ├── .env.example              # documents every required env var
@@ -117,6 +117,7 @@ backend/
 │   │   ├── cookie.ts         # @fastify/cookie + the one definition of the refresh cookie's attributes
 │   │   ├── rate-limit.ts     # @fastify/rate-limit, opt-in per route; 429 → the standard error body
 │   │   ├── db.ts             # Drizzle client (node-postgres) decorated onto Fastify
+│   │   ├── jobs.ts           # starts an enqueue-only pg-boss, decorates `app.jobs` (send)
 │   │   └── error-handler.ts  # every failure → one `{ code, message }` body; 404 handler too
 │   ├── lib/
 │   │   ├── tokens.ts         # shared JWT sign/verify util (sub, role, session_id, exp)
@@ -143,8 +144,11 @@ backend/
 │   │   │   └── business-hours.service.test.ts  # DB rollback + concurrent-replace race
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
+│   ├── worker.ts             # worker process entrypoint: validated env → startWorker, SIGTERM → drain
 │   ├── jobs/
-│   │   ├── worker.ts         # pg-boss worker entrypoint
+│   │   ├── boss.ts           # shared pg-boss config: queue names, createBoss/startBoss, JobQueue
+│   │   ├── worker.ts         # startWorker(): registers handlers + tiny /health server
+│   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
 │   │   └── reminders.job.ts  # 24h reminder logic (incl. admin grouping)
 │   └── lib/
 │       ├── mailer.ts         # email transport (provider in prod, Mailpit in dev/test)
@@ -159,8 +163,11 @@ backend/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   │   ├── test-database.test.ts        # proves the harness migrates and isolates
 │   │   ├── users.test.ts                # citext email, single-admin index, updated_at trigger
-│   │   ├── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
-│   │   └── business-hours.test.ts       # day_of_week range + closes_after_opens CHECKs
+│   │   └── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
+│   ├── jobs/
+│   │   ├── boss.test.ts                 # schema created on start, queues, API + worker co-start
+│   │   ├── worker.test.ts               # exactly-once no-op, /health, graceful drain
+│   │   └── api-enqueue.test.ts          # app.jobs.send → worker consumes it exactly once
 │   └── race/
 │       └── concurrent-booking.test.ts   # the headline race test
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
@@ -195,7 +202,12 @@ backend/
 - **The rate limiter is opt-in per route** (`config: RATE_LIMITED_ROUTE`), registered with `global: false` and before the routes — its `onRoute` hook only sees what is registered after it. Auth endpoints are limited because login costs ~250 ms of bcrypt; reads that are legitimately bursty are not. Keying is by client address only: adding the email to the key would let anyone lock a known address out of its own account. What counts as the client address is a deployment question, answered by `TRUST_PROXY` — see §10.
 - **`buildServer()` takes everything it needs as options** (database URL, JWT secret, TTLs, cookie `Secure` flag, rate limit, clock) and reads no environment itself. `secureCookies` and `trustProxy` are options for exactly this reason: "Secure in prod" and "who is in front of us" are environment questions, and `index.ts` answers both from validated env so the builder stays the same one the tests use. `index.ts` parses and validates the environment once via `config/env.ts` and hands the result down; `tests/helpers/test-app.ts` passes a throwaway container and a fixed secret to the **same** builder, so no test exercises a special-cased app.
 - **`error-handler.ts` is registered before the routes**, and its first branch handles a thrown non-object. That ordering is load-bearing: `hasZodFastifySchemaValidationErrors` narrows with the `in` operator, which raises a `TypeError` on a primitive — and a `TypeError` raised inside an error handler is not caught by it, so Fastify would answer in its own default shape with an internal message attached.
-- The **pg-boss worker** is a separate process (`jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker.
+- The **pg-boss worker** is a separate process (`src/worker.ts` → `jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker (ticket 4.1). Decisions worth not re-deriving:
+  - **One config module, two roles.** `jobs/boss.ts` builds the instance for both sides so they agree on schema and queue names. The API's role (`plugins/jobs.ts`) only ever sees a `JobQueue` (`send`), never `work`; supervision/maintenance and cron run in the worker alone. pg-boss creates its own `pgboss` schema on `start()` — no Drizzle migration owns it — and every queue in `QUEUES` is created on start by both roles (idempotent).
+  - **The worker needs no API secrets.** It loads `loadWorkerEnv()` (`DATABASE_URL`, `WORKER_HEALTH_PORT`/`HOST`), not the API's schema, so `JWT_SECRET` never reaches that container.
+  - **`/health` is HTTP-level, not TCP.** It runs `SELECT 1` through pg-boss's own pool and answers 503 when that fails, which a port probe cannot see. Request logging is off on that server; the probe runs every 5 s.
+  - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })`, and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first.
+  - **Handlers are injected** (`startWorker({ handlers })`), so tests can wrap the real handler and count invocations against a real Postgres.
 
 ---
 
@@ -281,18 +293,19 @@ shared/
 
 ## 7. Docker — one command to start it all
 
-`docker-compose.yml` orchestrates four services:
+`docker-compose.yml` orchestrates five services:
 
 ```
 postgres   →  the database (Postgres 18; btree_gist + citext enabled via init.sql)
 mailpit    →  catches outbound email in dev; UI for inspecting messages
-backend    →  Fastify API + a separate pg-boss worker process
+backend    →  Fastify API (enqueues pg-boss jobs)
+worker     →  pg-boss consumer — same image as backend, `node dist/worker.js`; /health for its healthcheck
 frontend   →  Vite dev server (dev) / static build served (prod)
 ```
 
 - **`docker compose up`** boots the whole stack for local development.
 - The base `docker-compose.yml` is CI/prod-like; **`docker-compose.override.yml`** layers on dev conveniences (bind-mounts for hot reload, **file-watch polling** so reloads fire from the Windows filesystem, exposed debug ports) and is applied automatically in local runs.
-- Each service defines a **TCP/port-level healthcheck**; the CI smoke test brings the base stack up and waits for those to pass.
+- Each service defines a **TCP/port-level healthcheck** — except the worker, whose probe is HTTP-level (`/health` reports pg-boss connected). The CI smoke test brings the base stack up, waits for those to pass, round-trips a no-op job through the worker and asserts it exits 0 on SIGTERM.
 - Per-service Dockerfiles live in `docker/` as multi-stage builds (deps → build → slim runtime), keeping production images small.
 - **Mailpit** means every notification is testable end-to-end without sending real email — the same capture point CI uses (in the E7 e2e stage).
 - **Prerequisite:** Docker Desktop with the WSL2 backend, and a root `.env` (`cp .env.example .env`). The base file references every variable without a default, so a missing `.env` fails at `up` rather than booting with surprise credentials.

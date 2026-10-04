@@ -48,7 +48,7 @@ physiobook/
 ├── e2e/        Playwright cross-package tests
 ├── docker/     Dockerfiles + postgres/init.sql (enables btree_gist + citext)
 ├── docs/       BACKLOG.csv — the sequenced plan of record (see §5) · REQUIREMENTS.md · SCHEMA.md
-├── docker-compose.yml        postgres · mailpit · backend · frontend
+├── docker-compose.yml        postgres · mailpit · backend · worker · frontend
 ├── tsconfig.base.json        strict options every package extends
 └── .github/workflows/ci.yml  lint → typecheck → format → unit/integration → coverage  (e2e added in E7)
 ```

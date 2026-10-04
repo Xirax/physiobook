@@ -73,6 +73,25 @@ services:
         - action: rebuild
           path: ./pnpm-lock.yaml
 
+  worker:
+    build:
+      target: dev
+    command: ['pnpm', 'dev:worker']
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      CHOKIDAR_USEPOLLING: 'true'
+      CHOKIDAR_INTERVAL: '300'
+      # See the backend service above.
+      pnpm_config_verify_deps_before_run: 'false'
+    volumes: *dev-volumes
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
   frontend:
     build:
       target: dev

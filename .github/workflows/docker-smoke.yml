@@ -99,6 +99,29 @@ jobs:
             "http://localhost:${FRONTEND_PORT}/" > /dev/null
           echo "Mailpit, backend (through nginx) and frontend all responded."
 
+      - name: Assert the worker consumes a job the API enqueues
+        # The worker's healthcheck proves pg-boss is connected, not that jobs
+        # flow. This enqueues a no-op through the API's own compiled queue
+        # module (dist/jobs/boss.js) and waits for the worker to complete it.
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml exec -T worker \
+            node --input-type=module < scripts/smoke/worker-roundtrip.mjs
+
+      - name: Assert the worker shuts down gracefully on SIGTERM
+        # `stop` sends SIGTERM and, after stop_grace_period, SIGKILL (exit 137).
+        # Exit 0 means boss.stop() drained and the process left on its own.
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml stop worker
+          code=$(docker inspect --format '{{.State.ExitCode}}' \
+            "$(docker compose -f docker-compose.yml ps --all --quiet worker)")
+          if [ "$code" != "0" ]; then
+            echo "::error::worker exited with $code on SIGTERM, expected a graceful 0"
+            exit 1
+          fi
+          echo "Worker drained and exited 0."
+
       - name: Assert Mailpit captures mail over SMTP
         # Mailpit exists to be the capture point for every notification, and the
         # UI answering on 8025 says nothing about whether 1025 accepts mail.
