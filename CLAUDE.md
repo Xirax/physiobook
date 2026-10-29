@@ -47,6 +47,8 @@ physiobook/
 ├── shared/     Zod schemas + inferred types       (the API contract, imported by both sides)
 ├── e2e/        Playwright cross-package tests
 ├── docker/     Dockerfiles + postgres/init.sql (enables btree_gist + citext)
+├── .claude/skills/  backend-dev · frontend-dev · pr-review (per-role rules, loaded by Claude Code)
+├── CLAUDE.md   this file (loaded automatically by Claude Code)
 ├── docs/       BACKLOG.csv — the sequenced plan of record (see §5) · REQUIREMENTS.md · SCHEMA.md
 ├── docker-compose.yml        postgres · mailpit · backend · worker · frontend
 ├── tsconfig.base.json        strict options every package extends
@@ -59,7 +61,7 @@ physiobook/
 - The **data model lives in `db/`.** Both backend and the test harness import schema and the Drizzle client from here. Never redefine tables elsewhere.
 - Packages talk only through explicit dependencies. No reaching into another package's internals.
 
-Full detail: `PROJECT_STRUCTURE.md`.
+Full detail: `docs/PROJECT_STRUCTURE.md`.
 
 ---
 
@@ -73,7 +75,7 @@ Full detail: `PROJECT_STRUCTURE.md`.
 - **Timezone:** store all timestamps in **UTC**; render in the practice timezone; handle DST explicitly.
 - **Future multi-practitioner:** the `EXCLUDE` constraint is already scoped by `practitioner_id`. Keep it that way; do not un-scope it.
 
-Full detail: `REQUIREMENTS.md` and `SCHEMA.md`. If code and these docs disagree, the docs win — or you flag the discrepancy; you do not silently diverge.
+Full detail: `docs/REQUIREMENTS.md` and `docs/SCHEMA.md`. If code and these docs disagree, the docs win — or you flag the discrepancy; you do not silently diverge.
 
 ---
 

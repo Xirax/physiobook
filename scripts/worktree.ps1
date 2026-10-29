@@ -4,7 +4,7 @@
 
 .DESCRIPTION
   Kazde worktree dostaje:
-    * wlasny branch  (type/story-nazwa, zgodnie z docs/CLAUDE.md)
+    * wlasny branch  (type/story-nazwa, zgodnie z CLAUDE.md)
     * wlasny folder  (..\physiobook.worktrees\<story>-<nazwa>)
     * wlasny .env    (skopiowany z glownego repo, z przesunietymi portami
                       i osobnym COMPOSE_PROJECT_NAME -> osobne kontenery i baza)
