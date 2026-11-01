@@ -33,6 +33,10 @@ describe('nextWindowFor', () => {
       closes_at: '23:59',
     });
   });
+
+  it('Has no window to offer once the day already runs to 23:59', () => {
+    expect(nextWindowFor(1, [row('a', 1, '18:00', '23:59')])).toBeNull();
+  });
 });
 
 describe('sameWeek', () => {

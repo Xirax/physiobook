@@ -55,7 +55,9 @@ export function useBusinessHoursEditor({
   };
 
   const add = (day: number) => {
-    edit([...rows, withKey({ day_of_week: day, ...nextWindowFor(day, rows) })]);
+    const next = nextWindowFor(day, rows);
+
+    if (next !== null) edit([...rows, withKey({ day_of_week: day, ...next })]);
   };
 
   const remove = (key: string) => {
@@ -89,6 +91,7 @@ export function useBusinessHoursEditor({
 
   return {
     rowsOf: (day: number) => rows.filter((row) => row.day_of_week === day),
+    canAddTo: (day: number) => nextWindowFor(day, rows) !== null,
     errors,
     dirty,
     overlappingDays,

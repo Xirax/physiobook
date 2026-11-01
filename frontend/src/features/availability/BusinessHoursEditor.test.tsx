@@ -90,6 +90,15 @@ describe('Adding and removing windows', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('Offers no further window on a day that already runs to 23:59', () => {
+    renderEditor(undefined, {
+      windows: [{ day_of_week: 1, opens_at: '18:00', closes_at: '23:59' }],
+    });
+
+    expect(screen.getByRole('button', { name: 'Add a window on Monday' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add a window on Tuesday' })).toBeEnabled();
+  });
+
   it('Removes a window, closing the day it was the last of', async () => {
     renderEditor();
 

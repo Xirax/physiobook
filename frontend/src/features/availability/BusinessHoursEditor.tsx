@@ -52,6 +52,7 @@ export const BusinessHoursEditor = (props: BusinessHoursEditorProps) => {
             key={day}
             name={name}
             rows={editor.rowsOf(day)}
+            canAdd={editor.canAddTo(day)}
             errors={editor.errors}
             onChange={editor.update}
             onRemove={editor.remove}

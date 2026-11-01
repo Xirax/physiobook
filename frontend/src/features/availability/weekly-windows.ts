@@ -60,20 +60,26 @@ export const sameWeek = (
   b: readonly BusinessHoursWindow[],
 ): boolean => JSON.stringify(sortWindows(a)) === JSON.stringify(sortWindows(b));
 
-/** A split shift picks up where the day's last window closes, so it does not start out overlapping. */
+/**
+ * A split shift picks up where the day's last window closes, so it does not
+ * start out overlapping. `null` when that is the last minute of the day and no
+ * window fits after it.
+ */
 export const nextWindowFor = (
   day: number,
   rows: readonly WindowRow[],
-): Omit<BusinessHoursWindow, 'day_of_week'> => {
+): Omit<BusinessHoursWindow, 'day_of_week'> | null => {
   const latestClose = rows
     .filter((row) => row.day_of_week === day)
     .map((row) => row.closes_at)
     .sort()
     .at(-1);
 
-  return latestClose === undefined
-    ? { opens_at: DEFAULT_OPEN, closes_at: DEFAULT_CLOSE }
-    : { opens_at: latestClose, closes_at: oneHourLater(latestClose) };
+  if (latestClose === undefined) return { opens_at: DEFAULT_OPEN, closes_at: DEFAULT_CLOSE };
+
+  if (latestClose >= LAST_MINUTE) return null;
+
+  return { opens_at: latestClose, closes_at: oneHourLater(latestClose) };
 };
 
 /** The shared contract's verdict on each row, so the editor blocks exactly what the API would refuse. */

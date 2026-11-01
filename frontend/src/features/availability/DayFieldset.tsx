@@ -10,6 +10,7 @@ export interface DayFieldsetProps {
   errors: ReadonlyMap<string, RowErrors>;
   onChange: (key: string, change: Partial<BusinessHoursWindow>) => void;
   onRemove: (key: string) => void;
+  canAdd: boolean;
   onAdd: () => void;
 }
 
@@ -19,6 +20,7 @@ export const DayFieldset = ({
   errors,
   onChange,
   onRemove,
+  canAdd,
   onAdd,
 }: DayFieldsetProps) => (
   <fieldset className={styles.day}>
@@ -45,6 +47,8 @@ export const DayFieldset = ({
       className={styles.secondary}
       type="button"
       aria-label={`Add a window on ${name}`}
+      title={canAdd ? undefined : 'The day already runs to 23:59'}
+      disabled={!canAdd}
       onClick={onAdd}
     >
       Add window
