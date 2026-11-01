@@ -1,6 +1,7 @@
 import { Route, Routes } from 'react-router';
 
 import { AuthGate } from './features/auth/AuthGate';
+import { useClearServerStateOnSignOut } from './features/auth/useClearServerStateOnSignOut';
 import { AppNav } from './routes/AppNav';
 import { RequireRole } from './routes/RequireRole';
 import { routeConfig, type AppRoute } from './routes/route-config';
@@ -14,14 +15,18 @@ const elementFor = ({ Component, requires }: AppRoute) =>
     </RequireRole>
   );
 
-export const App = () => (
-  <AuthGate>
-    <AppNav />
+export const App = () => {
+  useClearServerStateOnSignOut();
 
-    <Routes>
-      {routeConfig.map((route) => (
-        <Route key={route.path} path={route.path} element={elementFor(route)} />
-      ))}
-    </Routes>
-  </AuthGate>
-);
+  return (
+    <AuthGate>
+      <AppNav />
+
+      <Routes>
+        {routeConfig.map((route) => (
+          <Route key={route.path} path={route.path} element={elementFor(route)} />
+        ))}
+      </Routes>
+    </AuthGate>
+  );
+};

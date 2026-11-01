@@ -1,4 +1,5 @@
 import type { PublicUser } from '@physiobook/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, type InitialEntry } from 'react-router';
@@ -43,6 +44,10 @@ export const stubApi = ({ session = null, signsInAs, refresh }: AppStubOptions =
   }) as unknown as ApiClient['request'],
 });
 
+/** No retries, so a refusal a test stubs is the answer the component sees at once. */
+export const createTestQueryClient = () =>
+  new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+
 const LocationProbe = () => {
   const location = useLocation();
 
@@ -51,17 +56,20 @@ const LocationProbe = () => {
 
 export const renderAppAt = (entry: InitialEntry, options: AppStubOptions = {}) => {
   const api = stubApi(options);
+  const queryClient = createTestQueryClient();
 
   render(
     <MemoryRouter initialEntries={[entry]}>
-      <AuthProvider api={api as unknown as ApiClient}>
-        <App />
-        <LocationProbe />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider api={api as unknown as ApiClient}>
+          <App />
+          <LocationProbe />
+        </AuthProvider>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 
-  return api;
+  return { api, queryClient };
 };
 
 export const currentPath = () => screen.getByTestId('location').textContent;
