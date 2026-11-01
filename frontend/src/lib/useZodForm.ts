@@ -125,11 +125,11 @@ export function useZodForm<Values extends FormValues>({
 
     setPending(true);
 
-    const submitted = values;
+    const landed = values;
 
     void onSubmit(parsed.data)
       .then(() => {
-        setBaseline(submitted);
+        setBaseline(landed);
       })
       .catch((error: unknown) => {
         setRejected(fieldErrorsFromApi(error));
