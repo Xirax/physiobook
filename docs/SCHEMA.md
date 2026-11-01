@@ -98,6 +98,7 @@ Weekly recurring availability. The admin edits these freely; they define which s
 - Multiple rows per day allow split shifts (e.g. 09:00–13:00 and 15:00–18:00).
 - **No same-day overlap** is a cross-row rule, enforced by the shared Zod contract rather than the database (windows are half-open, so 09:00–12:00 and 12:00–15:00 touch without overlapping). That is sound because the only writer, `PUT /business-hours` (E2.2), replaces the whole week in one transaction that first takes `LOCK TABLE business_hours IN SHARE ROW EXCLUSIVE MODE`: two concurrent replaces would otherwise each delete only the rows their snapshot saw and commit the union of two weeks. The lock does not block reads, so `GET` serves the previous week until the replace commits.
 - Not a hard DB constraint on bookings — the API validates that a requested slot falls inside an open window. (Enforcing it purely in the DB would over-complicate the schema; it's covered by service logic + tests.)
+- **Practice-wide, deliberately no `practitioner_id`** (decided in E2.3). The weekly hours are the practice's opening hours and apply to every practitioner; the slot grid is scoped by `practitioner_id` only on the `calendar_blocks` side, where the overlap constraint lives. Per-practitioner hours, if ever needed, are an additive migration (§8).
 
 ---
 
@@ -256,7 +257,7 @@ MVP ships with a single admin/practitioner, but moving to multiple practitioners
 **Do now (cheap hedge, ~one column + one clause):**
 
 - Add a `practitioners` concept — **done (E3.1):** the single admin `users` row is practitioner #1; there is no `practitioners` table.
-- Add a `practitioner_id` column to the **scoping** tables — **done for `calendar_blocks` (E3.1).** `appointments` reaches its practitioner through its block rather than duplicating the column. `business_hours` is an open decision owned by E2.3.
+- Add a `practitioner_id` column to the **scoping** tables — **done for `calendar_blocks` (E3.1).** `appointments` reaches its practitioner through its block rather than duplicating the column. `business_hours` stays practice-wide (decided in E2.3, §2.4); per-practitioner hours would add the column then.
 - Make the overlap constraint **scoped to the practitioner** from day one, so overlap is forbidden only within the same practitioner (Dr. A at 10:00 must not block Dr. B at 10:00):
 
 ```sql
