@@ -1,9 +1,11 @@
+export * from './schemas/appointment.js';
 export * from './schemas/auth.js';
 export * from './schemas/business-hours.js';
 export * from './schemas/error.js';
 export * from './schemas/practice-settings.js';
 export * from './schemas/slots.js';
 export * from './schemas/time-off.js';
+export type * from './types/appointment.js';
 export type * from './types/auth.js';
 export type * from './types/business-hours.js';
 export type * from './types/error.js';
