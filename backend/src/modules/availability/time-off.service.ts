@@ -16,6 +16,8 @@ export interface TimeOffDependencies {
   now: () => Date;
 }
 
+// Drizzle's pg driver hands timestamptz back as a string; borrowing a
+// timestamptz column's mapper (createdAt's, any would do) turns it into a Date.
 const startOf = sql`lower(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
 const endOf = sql`upper(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
 
