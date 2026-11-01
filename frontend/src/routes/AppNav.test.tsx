@@ -47,7 +47,7 @@ describe('The nav a role is given', () => {
 
 describe('Logging out', () => {
   it('Tells the API, then leaves the app logged out at the login page', async () => {
-    const api = renderAppAt('/appointments', { session: testUser });
+    const { api } = renderAppAt('/appointments', { session: testUser });
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
@@ -68,6 +68,18 @@ describe('Logging out', () => {
     await screen.findByRole('heading', { name: 'Log in' });
 
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  });
+
+  it('Drops everything the session fetched, so the next sign-in starts clean', async () => {
+    const { queryClient } = renderAppAt('/admin', { session: testAdmin });
+
+    await screen.findByRole('heading', { name: 'Practice admin' });
+    queryClient.setQueryData(['business-hours'], { windows: [] });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    await screen.findByRole('heading', { name: 'Log in' });
+
+    expect(queryClient.getQueryData(['business-hours'])).toBeUndefined();
   });
 
   it('Sends an admin back to the login page just the same', async () => {

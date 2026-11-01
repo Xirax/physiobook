@@ -86,6 +86,19 @@ describe('createApiClient', () => {
       expect(new Headers(init?.headers).get('content-type')).toBe('application/json');
     });
 
+    it('Sends a PUT with its body, for the whole-resource replaces', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json(200, { windows: [] }));
+      const { api } = clientWith(fetch, 'access-token');
+
+      await api.request('/business-hours', { method: 'PUT', body: { windows: [] } });
+
+      const [path, init] = fetch.mock.calls[0] ?? [];
+
+      expect(path).toBe('/business-hours');
+      expect(init?.method).toBe('PUT');
+      expect(init?.body).toBe('{"windows":[]}');
+    });
+
     it('Parses the response with the schema it was given', async () => {
       const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(json(200, user));
       const { api } = clientWith(fetch, 'access-token');

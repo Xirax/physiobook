@@ -1,4 +1,5 @@
 import type { PublicUser } from '@physiobook/shared';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation, type InitialEntry } from 'react-router';
@@ -27,13 +28,25 @@ export interface AppStubOptions {
   session?: PublicUser | null;
   signsInAs?: PublicUser;
   refresh?: () => Promise<string | null>;
+  /** Answers for any other path; return `undefined` to fall through to the auth stubs. */
+  answer?: (path: string, options?: { method?: string; body?: unknown }) => unknown;
 }
 
-export const stubApi = ({ session = null, signsInAs, refresh }: AppStubOptions = {}) => ({
+export const stubApi = ({ session = null, signsInAs, refresh, answer }: AppStubOptions = {}) => ({
   refresh: vi.fn(refresh ?? (() => Promise.resolve(session === null ? null : 'access-token'))),
 
-  request: vi.fn((path: string) => {
+  request: vi.fn((path: string, options?: { method?: string; body?: unknown }) => {
     if (path === ME_PATH) return Promise.resolve(session);
+
+    if (answer !== undefined) {
+      try {
+        const answered = answer(path, options);
+
+        if (answered !== undefined) return Promise.resolve(answered);
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
 
     if ((path === LOGIN_PATH || path === REGISTER_PATH) && signsInAs !== undefined) {
       return Promise.resolve({ user: signsInAs, token: 'access-token' });
@@ -43,6 +56,10 @@ export const stubApi = ({ session = null, signsInAs, refresh }: AppStubOptions =
   }) as unknown as ApiClient['request'],
 });
 
+/** No retries, so a refusal a test stubs is the answer the component sees at once. */
+export const createTestQueryClient = () =>
+  new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+
 const LocationProbe = () => {
   const location = useLocation();
 
@@ -51,17 +68,20 @@ const LocationProbe = () => {
 
 export const renderAppAt = (entry: InitialEntry, options: AppStubOptions = {}) => {
   const api = stubApi(options);
+  const queryClient = createTestQueryClient();
 
   render(
     <MemoryRouter initialEntries={[entry]}>
-      <AuthProvider api={api as unknown as ApiClient}>
-        <App />
-        <LocationProbe />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider api={api as unknown as ApiClient}>
+          <App />
+          <LocationProbe />
+        </AuthProvider>
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 
-  return api;
+  return { api, queryClient };
 };
 
 export const currentPath = () => screen.getByTestId('location').textContent;

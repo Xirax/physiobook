@@ -17,7 +17,7 @@ const backendOrigin = process.env['BACKEND_ORIGIN'] ?? 'http://localhost:3000';
  * in the one way that looks like a logged-out user rather than an error.
  * `docker/frontend/nginx.conf` mirrors this list for the production build.
  */
-const apiPaths = ['/auth', '/health'];
+const apiPaths = ['/auth', '/health', '/business-hours', '/settings', '/slots'];
 
 export default defineConfig({
   plugins: [react()],

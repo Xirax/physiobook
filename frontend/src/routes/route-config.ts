@@ -3,6 +3,7 @@ import type { ComponentType } from 'react';
 
 import type { NavItem } from '../components/NavBar';
 
+import { AdminAvailability } from './admin/AdminAvailability';
 import { AdminHome } from './admin/AdminHome';
 import { HomeRedirect } from './HomeRedirect';
 import { LoginRoute } from './LoginRoute';
@@ -29,6 +30,12 @@ export const routeConfig: readonly AppRoute[] = [
     navLabel: 'Appointments',
   },
   { path: paths.admin, Component: AdminHome, requires: 'admin', navLabel: 'Dashboard' },
+  {
+    path: paths.adminAvailability,
+    Component: AdminAvailability,
+    requires: 'admin',
+    navLabel: 'Availability',
+  },
   { path: '*', Component: NotFound },
 ];
 
