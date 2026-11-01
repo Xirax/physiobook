@@ -76,6 +76,18 @@ export class TimeOffInPastError extends DomainError {
   }
 }
 
+export class SlotTakenError extends DomainError {
+  constructor() {
+    super(errorCodes.SLOT_TAKEN, 409, 'That slot has just been taken. Pick another time.');
+  }
+}
+
+export class SlotNotBookableError extends DomainError {
+  constructor() {
+    super(errorCodes.SLOT_NOT_BOOKABLE, 422, 'That time is not a bookable slot');
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }

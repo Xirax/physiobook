@@ -11,6 +11,8 @@ import {
   NotFoundError,
   PG_UNIQUE_VIOLATION,
   RateLimitedError,
+  SlotNotBookableError,
+  SlotTakenError,
   TimeOffConflictError,
   TimeOffInPastError,
 } from './errors.js';
@@ -71,6 +73,8 @@ describe('Domain errors', () => {
     [new TimeOffInPastError(), 'TIME_OFF_IN_PAST', 422],
     [new NotFoundError('No such time off'), 'NOT_FOUND', 404],
     [new AlreadyCancelledError('Already cancelled'), 'ALREADY_CANCELLED', 409],
+    [new SlotTakenError(), 'SLOT_TAKEN', 409],
+    [new SlotNotBookableError(), 'SLOT_NOT_BOOKABLE', 422],
   ])('Maps %s to its code and status', (error, code, status) => {
     expect(error.code).toBe(code);
     expect(error.statusCode).toBe(status);
