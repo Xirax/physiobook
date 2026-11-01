@@ -1,6 +1,5 @@
 import { appointments, calendarBlocks, type Database } from '@physiobook/db';
 import type { Appointment, BookAppointmentRequest } from '@physiobook/shared';
-import { sql } from 'drizzle-orm';
 
 import {
   isPostgresError,
@@ -8,6 +7,7 @@ import {
   SlotNotBookableError,
   SlotTakenError,
 } from '../../lib/errors.js';
+import { periodEnd, periodStart, tstzrangeOf } from '../../lib/period.js';
 import { getBusinessHours } from '../availability/business-hours.service.js';
 import { isSlotBookable } from '../availability/slot-grid.js';
 import { findPractitionerId } from '../practitioner/practitioner.service.js';
@@ -19,11 +19,6 @@ export interface AppointmentsDependencies {
 }
 
 const SLOT_MS = 3_600_000;
-
-// Drizzle's pg driver hands timestamptz back as a string; borrowing a
-// timestamptz column's mapper turns it into a Date.
-const startOf = sql`lower(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
-const endOf = sql`upper(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
 
 async function assertBookable(db: Database, start: Date, now: Date): Promise<void> {
   const [{ timezone }, { windows }] = await Promise.all([
@@ -54,12 +49,12 @@ export async function bookAppointment(
         .values({
           practitionerId,
           kind: 'appointment',
-          period: sql`tstzrange(${start.toISOString()}, ${end.toISOString()}, '[)')`,
+          period: tstzrangeOf({ start, end }),
         })
         .returning({
           id: calendarBlocks.id,
-          start: startOf,
-          end: endOf,
+          start: periodStart,
+          end: periodEnd,
           status: calendarBlocks.status,
         });
 

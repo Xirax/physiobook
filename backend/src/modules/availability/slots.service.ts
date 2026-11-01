@@ -3,6 +3,7 @@ import type { SlotsQuery, SlotsResponse } from '@physiobook/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 
+import { periodEnd, periodStart, tstzrangeOf } from '../../lib/period.js';
 import { findPractitionerId } from '../practitioner/practitioner.service.js';
 import { getSettings } from '../settings/settings.service.js';
 
@@ -21,15 +22,15 @@ async function findActiveBlocks(
 ): Promise<TimeRange[]> {
   return db
     .select({
-      start: sql`lower(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt),
-      end: sql`upper(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt),
+      start: periodStart,
+      end: periodEnd,
     })
     .from(calendarBlocks)
     .where(
       and(
         eq(calendarBlocks.practitionerId, practitionerId),
         eq(calendarBlocks.status, 'active'),
-        sql`${calendarBlocks.period} && tstzrange(${range.start.toISOString()}, ${range.end.toISOString()}, '[)')`,
+        sql`${calendarBlocks.period} && ${tstzrangeOf(range)}`,
       ),
     );
 }
