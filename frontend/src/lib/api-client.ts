@@ -24,7 +24,7 @@ export class ApiError extends Error {
 }
 
 export interface RequestOptions<Output> {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Parses the response, so a contract drift is caught here, not three components later. */
   schema?: z.ZodType<Output>;
