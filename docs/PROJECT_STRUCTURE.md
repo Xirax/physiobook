@@ -115,14 +115,15 @@ backend/
 │   ├── plugins/              # Fastify plugins (auth, cookie, rate-limit, cors, error handler)
 │   │   ├── auth.ts           # verify access JWT + per-request session revocation check; requireAuth / requireRole
 │   │   ├── cookie.ts         # @fastify/cookie + the one definition of the refresh cookie's attributes
-│   │   ├── rate-limit.ts     # @fastify/rate-limit, opt-in per route; 429 → the standard error body
+│   │   ├── rate-limit.ts     # @fastify/rate-limit, opt-in per route (per address, or per user behind a guard); 429 → the standard error body
 │   │   ├── db.ts             # Drizzle client (node-postgres) decorated onto Fastify
 │   │   ├── jobs.ts           # starts an enqueue-only pg-boss, decorates `app.jobs` (send)
 │   │   └── error-handler.ts  # every failure → one `{ code, message }` body; 404 handler too
 │   ├── lib/
 │   │   ├── tokens.ts         # shared JWT sign/verify util (sub, role, session_id, exp)
 │   │   ├── refresh-token.ts  # mint/parse/hash the opaque refresh cookie value
-│   │   └── session-id.ts     # isSessionId() — the one uuid check both credentials pass
+│   │   ├── session-id.ts     # isSessionId() — the one uuid check both credentials pass
+│   │   └── period.ts         # periodStart / periodEnd / tstzrangeOf, shared by slots, time-off and booking
 │   ├── modules/              # one folder per domain area
 │   │   ├── auth/
 │   │   │   ├── auth.routes.ts    # register, login, me, refresh, logout
@@ -134,9 +135,11 @@ backend/
 │   │   │   ├── auth.logout.test.ts   # POST /auth/logout (incl. the instant-kill proof)
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
-│   │   │   ├── appointments.routes.ts
-│   │   │   ├── appointments.service.ts      # booking, cancel, race handling
-│   │   │   └── appointments.test.ts
+│   │   │   ├── appointments.routes.ts       # POST /appointments (user)
+│   │   │   ├── appointments.service.ts      # isSlotBookable → 422, then block + appointment in one transaction; EXCLUDE → 409 SLOT_TAKEN
+│   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback
+│   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
+│   │   │   └── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
 │   │   ├── availability/     # admin business hours + time off
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction
@@ -153,6 +156,8 @@ backend/
 │   │   │   ├── time-off.service.test.ts   # Testcontainers: overlap kinds, statuses, scope, clock, create + cancel races
 │   │   │   ├── time-off.routes.ts         # POST /time-off, DELETE /time-off/:id (admin)
 │   │   │   └── time-off.test.ts           # inject(): 201/409/422/400/403/401, 204/404/409/422, slots hidden and freed
+│   │   ├── practitioner/
+│   │   │   └── practitioner.service.ts  # findPractitionerId() — the single admin (slots + booking)
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
 │   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
@@ -287,7 +292,7 @@ db/
 shared/
 ├── src/
 │   ├── schemas/              # Zod schemas for requests & responses
-│   │   ├── appointment.ts
+│   │   ├── appointment.ts    # book request { start } (strict: no user_id), appointment { id, start, end, status }
 │   │   ├── business-hours.ts # weekly windows: HH:MM, close > open, no same-day overlap
 │   │   ├── auth.ts           # register/login payloads (register: password min 8 / max 72 bytes for bcrypt)
 │   │   └── error.ts          # the one error body: { code, message, details? } + the closed code list
@@ -375,7 +380,7 @@ Runs on every push / PR (`ubuntu-latest`), in order, failing fast:
 - **Turborepo:** optional and additive — introduce it when build/test times justify caching.
 - **Frontend in prod:** for a portfolio, serving the built static assets (via the frontend container or a CDN) is enough; no SSR needed.
 - **Post-MVP hardening (deferred by decision):** password-change flow, "log out everywhere", and email verification. Session revocation for the _current_ session is no longer a claim about the design but a tested property (E1.6): `POST /auth/logout` stamps `revoked_at`, and the per-request check in the auth plugin refuses the still-unexpired access token on the very next request.
-- **Auth rate-limiting landed in E1.3**, closing what §10 previously recorded as deferred: `/auth/login` and `/auth/register` are limited per route, per client address, by `AUTH_RATE_LIMIT_MAX` in `AUTH_RATE_LIMIT_WINDOW_SECONDS` (10/minute by default). **E1.6 added `/auth/refresh` on its own `REFRESH_RATE_LIMIT_MAX` (100/minute)** — see §4 for why it is bounded but not bounded at login's number. `/auth/logout` is left unlimited: it is behind the guard, and the only session it can revoke is the caller's own, once. Two things bound how much any of this is worth, both configuration rather than code:
+- **Auth rate-limiting landed in E1.3**, closing what §10 previously recorded as deferred: `/auth/login` and `/auth/register` are limited per route, per client address, by `AUTH_RATE_LIMIT_MAX` in `AUTH_RATE_LIMIT_WINDOW_SECONDS` (10/minute by default). **E1.6 added `/auth/refresh` on its own `REFRESH_RATE_LIMIT_MAX` (100/minute)** — see §4 for why it is bounded but not bounded at login's number. `/auth/logout` is left unlimited: it is behind the guard, and the only session it can revoke is the caller's own, once. **E3.2 put `POST /appointments` on its own `BOOKING_RATE_LIMIT_MAX` (20/minute), keyed by the authenticated user rather than the address** — booking runs no bcrypt, and patients behind one NAT must not share a bucket — so the address caveat below does not apply to it. Two things bound how much any of this is worth, both configuration rather than code:
   - **"Client address" means whatever `TRUST_PROXY` says it means.** Unset, it is the socket address — correct only when the app is reached directly. Put nginx, Traefik, or a load balancer in front without setting it and every request resolves to the proxy, the entire practice shares one bucket, and one noisy client locks the real user out — the control inverted into the denial of service it was added to prevent. `TRUST_PROXY` takes a hop count or a list of trusted proxy addresses; it **rejects `true`**, which would take the leftmost `X-Forwarded-For` entry — written by the client — and let an attacker present a fresh identity per request.
     - **E1.5 made that hypothetical real and it is now settled in configuration.** The SPA reaches `/auth` through the frontend origin, so nginx (and the Vite dev server, via `xfwd`) is in front of every auth request: `TRUST_PROXY=1`. A hop count trusts the header on _every_ route in, so the base stack **publishes no backend port** — the proxy is the only way in, which is what makes the forwarded address trustworthy. The dev override republishes it for debugging and accepts that trade knowingly. Change one of those three and the other two must change with it. That the limiter then buckets by the forwarded client rather than the proxy is covered by `backend/src/modules/auth/auth.login.test.ts`.
   - **The store is in-memory, per process**, so N replicas mean N× the limit. Fine for one container; a shared store is the fix if the API is ever scaled out.

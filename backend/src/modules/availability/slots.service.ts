@@ -1,8 +1,10 @@
-import { calendarBlocks, users, type Database } from '@physiobook/db';
+import { calendarBlocks, type Database } from '@physiobook/db';
 import type { SlotsQuery, SlotsResponse } from '@physiobook/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import { DateTime } from 'luxon';
 
+import { periodEnd, periodStart, tstzrangeOf } from '../../lib/period.js';
+import { findPractitionerId } from '../practitioner/practitioner.service.js';
 import { getSettings } from '../settings/settings.service.js';
 
 import { getBusinessHours } from './business-hours.service.js';
@@ -13,20 +15,6 @@ export interface SlotsDependencies {
   now: () => Date;
 }
 
-// The single admin is practitioner #1 (SCHEMA.md §2.5); users_single_admin_idx
-// guarantees there is exactly one.
-async function findPractitionerId(db: Database): Promise<string> {
-  const [admin] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.role, 'admin'))
-    .limit(1);
-
-  if (admin === undefined) throw new Error('the practitioner (admin) user is missing');
-
-  return admin.id;
-}
-
 async function findActiveBlocks(
   db: Database,
   practitionerId: string,
@@ -34,15 +22,15 @@ async function findActiveBlocks(
 ): Promise<TimeRange[]> {
   return db
     .select({
-      start: sql`lower(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt),
-      end: sql`upper(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt),
+      start: periodStart,
+      end: periodEnd,
     })
     .from(calendarBlocks)
     .where(
       and(
         eq(calendarBlocks.practitionerId, practitionerId),
         eq(calendarBlocks.status, 'active'),
-        sql`${calendarBlocks.period} && tstzrange(${range.start.toISOString()}, ${range.end.toISOString()}, '[)')`,
+        sql`${calendarBlocks.period} && ${tstzrangeOf(range)}`,
       ),
     );
 }

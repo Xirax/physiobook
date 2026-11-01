@@ -10,19 +10,12 @@ import {
   TimeOffConflictError,
   TimeOffInPastError,
 } from '../../lib/errors.js';
+import { periodEnd, periodStart, tstzrangeOf } from '../../lib/period.js';
 
 export interface TimeOffDependencies {
   db: Database;
   now: () => Date;
 }
-
-// Drizzle's pg driver hands timestamptz back as a string; borrowing a
-// timestamptz column's mapper (createdAt's, any would do) turns it into a Date.
-const startOf = sql`lower(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
-const endOf = sql`upper(${calendarBlocks.period})`.mapWith(calendarBlocks.createdAt);
-
-const periodOf = ({ start, end }: { start: string; end: string }) =>
-  sql`tstzrange(${start}, ${end}, '[)')`;
 
 async function findConflicts(
   db: Database,
@@ -30,16 +23,21 @@ async function findConflicts(
   range: CreateTimeOffRequest,
 ): Promise<BlockConflict[]> {
   const rows = await db
-    .select({ id: calendarBlocks.id, kind: calendarBlocks.kind, start: startOf, end: endOf })
+    .select({
+      id: calendarBlocks.id,
+      kind: calendarBlocks.kind,
+      start: periodStart,
+      end: periodEnd,
+    })
     .from(calendarBlocks)
     .where(
       and(
         eq(calendarBlocks.practitionerId, practitionerId),
         eq(calendarBlocks.status, 'active'),
-        sql`${calendarBlocks.period} && ${periodOf(range)}`,
+        sql`${calendarBlocks.period} && ${tstzrangeOf(range)}`,
       ),
     )
-    .orderBy(asc(startOf));
+    .orderBy(asc(periodStart));
 
   return rows.map((row) => ({
     id: row.id,
@@ -59,10 +57,15 @@ async function insertTimeOff(
     .values({
       practitionerId,
       kind: 'time_off',
-      period: periodOf(input),
+      period: tstzrangeOf(input),
       note: input.note ?? null,
     })
-    .returning({ id: calendarBlocks.id, start: startOf, end: endOf, note: calendarBlocks.note });
+    .returning({
+      id: calendarBlocks.id,
+      start: periodStart,
+      end: periodEnd,
+      note: calendarBlocks.note,
+    });
 
   if (row === undefined) throw new Error('time-off insert returned no row');
 
@@ -112,7 +115,7 @@ export async function cancelTimeOff(
     eq(calendarBlocks.practitionerId, practitionerId),
     eq(calendarBlocks.kind, 'time_off'),
   );
-  const notYetOver = sql`${endOf} > ${now().toISOString()}::timestamptz`;
+  const notYetOver = sql`${periodEnd} > ${now().toISOString()}::timestamptz`;
 
   // One conditional UPDATE, so two concurrent cancels cannot both succeed; the
   // read below only explains a miss.

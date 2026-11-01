@@ -20,6 +20,7 @@ describe('loadEnv', () => {
     expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
     expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
     expect(env.REFRESH_RATE_LIMIT_MAX).toBe(100);
+    expect(env.BOOKING_RATE_LIMIT_MAX).toBe(20);
     expect(env.TRUST_PROXY).toBe(false);
     expect(env.BACKEND_PORT).toBe(3000);
     expect(env.BACKEND_HOST).toBe('0.0.0.0');
@@ -74,6 +75,9 @@ describe('loadEnv', () => {
 
   it('Rejects a zero rate-limit max, which would refuse every login', () => {
     expect(() => loadEnv({ ...valid, AUTH_RATE_LIMIT_MAX: '0' })).toThrow(/AUTH_RATE_LIMIT_MAX/);
+    expect(() => loadEnv({ ...valid, BOOKING_RATE_LIMIT_MAX: '0' })).toThrow(
+      /BOOKING_RATE_LIMIT_MAX/,
+    );
   });
 
   describe('TRUST_PROXY, which decides what the rate limit is keyed on', () => {
@@ -128,12 +132,14 @@ describe('loadEnv', () => {
         AUTH_RATE_LIMIT_MAX: '',
         AUTH_RATE_LIMIT_WINDOW_SECONDS: '',
         REFRESH_RATE_LIMIT_MAX: '',
+        BOOKING_RATE_LIMIT_MAX: '',
       });
 
       expect(env.REFRESH_TTL_SECONDS).toBe(604_800);
       expect(env.AUTH_RATE_LIMIT_MAX).toBe(10);
       expect(env.AUTH_RATE_LIMIT_WINDOW_SECONDS).toBe(60);
       expect(env.REFRESH_RATE_LIMIT_MAX).toBe(100);
+      expect(env.BOOKING_RATE_LIMIT_MAX).toBe(20);
     });
 
     it('Falls back to the port and host defaults', () => {

@@ -97,6 +97,8 @@ services:
       REFRESH_TTL_SECONDS: ${REFRESH_TTL_SECONDS}
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX}
       AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS}
+      # Per-user bucket for POST /appointments (E3.2), in the same window.
+      BOOKING_RATE_LIMIT_MAX: ${BOOKING_RATE_LIMIT_MAX}
       TRUST_PROXY: ${TRUST_PROXY}
     # Deliberately NOT published. The frontend container proxies /auth to this
     # service, and TRUST_PROXY=1 makes the API take the client address from the
