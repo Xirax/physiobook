@@ -2,10 +2,15 @@ import { users } from '@physiobook/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { TimeOffConflictError, TimeOffInPastError } from '../../lib/errors.js';
+import {
+  AlreadyCancelledError,
+  NotFoundError,
+  TimeOffConflictError,
+  TimeOffInPastError,
+} from '../../lib/errors.js';
 import { createTestDatabase, type TestDatabase } from '../../../tests/helpers/test-db.js';
 
-import { createTimeOff } from './time-off.service.js';
+import { cancelTimeOff, createTimeOff } from './time-off.service.js';
 
 const NOW = new Date('2026-11-01T12:00:00Z');
 
@@ -21,6 +26,17 @@ describe('time-off service', () => {
       { start, end, ...(note === undefined ? {} : { note }) },
       { db: database.db, now: () => now },
     );
+
+  const cancel = (id: string, now = NOW, practitioner = practitionerId) =>
+    cancelTimeOff(practitioner, id, { db: database.db, now: () => now });
+
+  const statusOf = async (id: string) => {
+    const { rows } = await database.pool.query<{ status: string }>(
+      'SELECT status FROM calendar_blocks WHERE id = $1',
+      [id],
+    );
+    return rows[0]?.status;
+  };
 
   interface BlockOptions {
     kind?: 'appointment' | 'time_off';
@@ -181,5 +197,77 @@ describe('time-off service', () => {
     expect(
       results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : [])),
     ).toEqual(Array.from({ length: 7 }, () => expect.any(TimeOffConflictError)));
+  });
+
+  describe('cancelTimeOff', () => {
+    it('Flips an active time-off to cancelled, freeing its range for a new block', async () => {
+      const { id } = await create(at('09:00'), at('12:00'));
+
+      await cancel(id);
+
+      expect(await statusOf(id)).toBe('cancelled');
+      await expect(insertBlock(at('10:00'), at('11:00'))).resolves.toBeDefined();
+    });
+
+    it('Cancels a time-off that has started but not ended', async () => {
+      const { id } = await create(at('09:00'), at('12:00'));
+
+      await expect(cancel(id, new Date(at('11:59')))).resolves.toBeUndefined();
+      expect(await statusOf(id)).toBe('cancelled');
+    });
+
+    it('Refuses a time-off that is already over and leaves it active', async () => {
+      const { id } = await create(at('09:00'), at('12:00'));
+
+      await expect(cancel(id, new Date(at('12:00')))).rejects.toBeInstanceOf(TimeOffInPastError);
+      expect(await statusOf(id)).toBe('active');
+    });
+
+    it.each(['cancelled', 'cancelled_by_admin'] as const)(
+      'Refuses a %s time-off as already cancelled',
+      async (status) => {
+        const id = await insertBlock(at('09:00'), at('12:00'), { kind: 'time_off', status });
+
+        await expect(cancel(id)).rejects.toBeInstanceOf(AlreadyCancelledError);
+      },
+    );
+
+    it('Answers not found for an id that does not exist', async () => {
+      await expect(cancel('11111111-1111-4111-8111-111111111111')).rejects.toBeInstanceOf(
+        NotFoundError,
+      );
+    });
+
+    it('Answers not found for an appointment block and leaves it active', async () => {
+      const appointment = await insertBlock(at('10:00'), at('11:00'));
+
+      await expect(cancel(appointment)).rejects.toBeInstanceOf(NotFoundError);
+      expect(await statusOf(appointment)).toBe('active');
+    });
+
+    it('Answers not found for the time-off of another practitioner', async () => {
+      const [other] = await database.db
+        .insert(users)
+        .values({ email: 'third@example.com', passwordHash: 'x', fullName: 'Third Physio' })
+        .returning({ id: users.id });
+      const id = await insertBlock(at('09:00'), at('12:00'), {
+        kind: 'time_off',
+        practitioner: other!.id,
+      });
+
+      await expect(cancel(id)).rejects.toBeInstanceOf(NotFoundError);
+      expect(await statusOf(id)).toBe('active');
+    });
+
+    it('Lets exactly one of several concurrent cancels succeed', async () => {
+      const { id } = await create(at('09:00'), at('12:00'));
+
+      const results = await Promise.allSettled(Array.from({ length: 6 }, () => cancel(id)));
+
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      expect(
+        results.flatMap((result) => (result.status === 'rejected' ? [result.reason] : [])),
+      ).toEqual(Array.from({ length: 5 }, () => expect.any(AlreadyCancelledError)));
+    });
   });
 });

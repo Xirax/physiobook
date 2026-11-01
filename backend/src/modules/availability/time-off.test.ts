@@ -247,4 +247,101 @@ describe('/time-off', () => {
       expect(response.json().code).toBe(errorCodes.UNAUTHORIZED);
     });
   });
+
+  describe('DELETE /time-off/:id', () => {
+    const remove = (id: string, token?: string): Promise<LightMyRequestResponse> =>
+      app.inject({
+        method: 'DELETE',
+        url: `/time-off/${id}`,
+        ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
+      });
+
+    const book = async (start: string, end: string): Promise<string> =>
+      (await post({ start, end }, adminToken)).json().id;
+
+    it('Cancels a time-off with 204 and makes its slots bookable again', async () => {
+      const id = await book(at('09:00'), at('11:00'));
+      expect(await mondaySlotStarts()).toEqual([at('08:00'), at('11:00')]);
+
+      const response = await remove(id, adminToken);
+
+      expect(response.statusCode).toBe(204);
+      expect(response.body).toBe('');
+      expect(await mondaySlotStarts()).toEqual([
+        at('08:00'),
+        at('09:00'),
+        at('10:00'),
+        at('11:00'),
+      ]);
+    });
+
+    it('Lets the same range be booked as time-off again', async () => {
+      const id = await book(at('09:00'), at('11:00'));
+      await remove(id, adminToken);
+
+      const response = await post({ start: at('09:00'), end: at('11:00') }, adminToken);
+
+      expect(response.statusCode).toBe(201);
+    });
+
+    it('Answers 409 for a time-off that is already cancelled', async () => {
+      const id = await book(at('09:00'), at('11:00'));
+      await remove(id, adminToken);
+
+      const response = await remove(id, adminToken);
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe(errorCodes.ALREADY_CANCELLED);
+    });
+
+    it('Answers 404 for an id that does not exist', async () => {
+      const response = await remove('11111111-1111-4111-8111-111111111111', adminToken);
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe(errorCodes.NOT_FOUND);
+    });
+
+    it('Answers 404 for an appointment block', async () => {
+      const appointment = await insertAppointmentBlock(at('10:00'), at('11:00'));
+
+      expect((await remove(appointment, adminToken)).statusCode).toBe(404);
+    });
+
+    it('Answers 422 for a time-off that is already over', async () => {
+      const { rows } = await database.pool.query<{ id: string }>(
+        `INSERT INTO calendar_blocks (practitioner_id, kind, period)
+         VALUES ($1, 'time_off', tstzrange('2026-10-30T09:00:00Z', '2026-10-30T12:00:00Z', '[)'))
+         RETURNING id`,
+        [practitionerId],
+      );
+
+      const response = await remove(rows[0]!.id, adminToken);
+
+      expect(response.statusCode).toBe(422);
+      expect(response.json().code).toBe(errorCodes.TIME_OFF_IN_PAST);
+    });
+
+    it('Rejects an id that is not a UUID with 400', async () => {
+      const response = await remove('not-a-uuid', adminToken);
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe(errorCodes.VALIDATION_FAILED);
+    });
+
+    it('Refuses a non-admin caller with 403 and leaves the time-off in place', async () => {
+      const id = await book(at('09:00'), at('11:00'));
+
+      const response = await remove(id, userToken);
+
+      expect(response.statusCode).toBe(403);
+      expect(response.json().code).toBe(errorCodes.FORBIDDEN);
+      expect(await mondaySlotStarts()).toEqual([at('08:00'), at('11:00')]);
+    });
+
+    it('Refuses an unauthenticated caller with 401', async () => {
+      const response = await remove('11111111-1111-4111-8111-111111111111');
+
+      expect(response.statusCode).toBe(401);
+    });
+  });
 });

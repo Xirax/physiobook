@@ -3,7 +3,9 @@ import type { BlockConflict, CreateTimeOffRequest, TimeOff } from '@physiobook/s
 import { and, asc, eq, sql } from 'drizzle-orm';
 
 import {
+  AlreadyCancelledError,
   isPostgresError,
+  NotFoundError,
   PG_EXCLUSION_VIOLATION,
   TimeOffConflictError,
   TimeOffInPastError,
@@ -78,4 +80,38 @@ export async function createTimeOff(
     // blocker cancelled in between can make the list shorter, never the 409 wrong.
     throw new TimeOffConflictError(await findConflicts(db, practitionerId, input));
   }
+}
+
+export async function cancelTimeOff(
+  practitionerId: string,
+  id: string,
+  { db, now }: TimeOffDependencies,
+): Promise<void> {
+  const ownTimeOff = and(
+    eq(calendarBlocks.id, id),
+    eq(calendarBlocks.practitionerId, practitionerId),
+    eq(calendarBlocks.kind, 'time_off'),
+  );
+  const notYetOver = sql`${endOf} > ${now().toISOString()}::timestamptz`;
+
+  // One conditional UPDATE, so two concurrent cancels cannot both succeed; the
+  // read below only explains a miss.
+  const cancelled = await db
+    .update(calendarBlocks)
+    .set({ status: 'cancelled' })
+    .where(and(ownTimeOff, eq(calendarBlocks.status, 'active'), notYetOver))
+    .returning({ id: calendarBlocks.id });
+
+  if (cancelled.length > 0) return;
+
+  const [block] = await db
+    .select({ status: calendarBlocks.status })
+    .from(calendarBlocks)
+    .where(ownTimeOff);
+
+  if (block === undefined) throw new NotFoundError('No such time off');
+  if (block.status !== 'active')
+    throw new AlreadyCancelledError('That time off is already cancelled');
+
+  throw new TimeOffInPastError();
 }
