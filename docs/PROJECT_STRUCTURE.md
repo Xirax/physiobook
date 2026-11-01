@@ -141,7 +141,14 @@ backend/
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction
 │   │   │   ├── business-hours.test.ts     # inject(): validation, roles, no partial write
-│   │   │   └── business-hours.service.test.ts  # DB rollback + concurrent-replace race
+│   │   │   ├── business-hours.service.test.ts  # DB rollback + concurrent-replace race
+│   │   │   ├── slot-grid.ts               # pure: generateSlots, bookingWindow, isSlotBookable (DST-aware, Luxon)
+│   │   │   ├── slot-grid.test.ts          # fixed-clock cases, DST days, UTC→local oracle across zones
+│   │   │   ├── slot-grid.property.test.ts # fast-check invariants of the grid
+│   │   │   ├── slots.service.ts           # settings + hours + active blocks → bookable slots
+│   │   │   ├── slots.service.test.ts      # Testcontainers: block kinds/statuses, practitioner scope, clock
+│   │   │   ├── slots.routes.ts            # GET /slots (any auth)
+│   │   │   └── slots.test.ts              # inject(): range cap, validation, auth
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
 │   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
