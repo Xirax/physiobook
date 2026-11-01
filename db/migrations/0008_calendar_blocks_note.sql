@@ -1,0 +1,2 @@
+ALTER TABLE "calendar_blocks" ADD COLUMN "note" text;--> statement-breakpoint
+ALTER TABLE "calendar_blocks" ADD CONSTRAINT "calendar_blocks_note_time_off_only" CHECK ("calendar_blocks"."kind" = 'time_off' OR "calendar_blocks"."note" IS NULL);
