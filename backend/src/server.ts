@@ -17,6 +17,7 @@ import rateLimitPlugin from './plugins/rate-limit.js';
 export interface RateLimitOptions {
   max: number;
   refreshMax: number;
+  bookingMax: number;
   timeWindow: number | string;
 }
 
@@ -65,7 +66,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   await app.register(businessHoursRoutes);
   await app.register(slotsRoutes, options.now === undefined ? {} : { now: options.now });
   await app.register(timeOffRoutes, options.now === undefined ? {} : { now: options.now });
-  await app.register(appointmentsRoutes, options.now === undefined ? {} : { now: options.now });
+  await app.register(appointmentsRoutes, {
+    bookingRateLimitMax: options.rateLimit.bookingMax,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
 
   return app;
 }

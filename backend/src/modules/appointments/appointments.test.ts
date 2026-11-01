@@ -208,26 +208,53 @@ describe('POST /appointments', () => {
     expect(await blockCount()).toBe(0);
   });
 
-  it('Answers 429 in the standard error shape once the limit is passed', async () => {
-    const limited = await buildTestApp({
-      databaseUrl: database.connectionString,
-      now: () => NOW,
-      rateLimitMax: 2,
+  describe('Rate limiting', () => {
+    const withLimits = (limits: { rateLimitMax?: number; bookingRateLimitMax?: number }) =>
+      buildTestApp({ databaseUrl: database.connectionString, now: () => NOW, ...limits });
+
+    it('Answers 429 in the standard error shape once a user passes the limit', async () => {
+      const limited = await withLimits({ bookingRateLimitMax: 2 });
+
+      try {
+        expect((await post({ start: at('08:00') }, noraToken, limited)).statusCode).toBe(201);
+        expect((await post({ start: at('08:00') }, noraToken, limited)).statusCode).toBe(409);
+
+        const blocked = await post({ start: at('09:00') }, noraToken, limited);
+
+        expect(blocked.statusCode).toBe(429);
+        expect(blocked.json()).toEqual({
+          code: errorCodes.RATE_LIMITED,
+          message: expect.any(String),
+        });
+      } finally {
+        await limited.close();
+      }
     });
 
-    try {
-      expect((await post({ start: at('08:00') }, noraToken, limited)).statusCode).toBe(201);
-      expect((await post({ start: at('08:00') }, otisToken, limited)).statusCode).toBe(409);
+    it('Counts each user on their own, so patients behind one address do not share a bucket', async () => {
+      const limited = await withLimits({ bookingRateLimitMax: 2 });
 
-      const blocked = await post({ start: at('09:00') }, noraToken, limited);
+      try {
+        await post({ start: at('08:00') }, noraToken, limited);
+        await post({ start: at('09:00') }, noraToken, limited);
+        expect((await post({ start: at('10:00') }, noraToken, limited)).statusCode).toBe(429);
 
-      expect(blocked.statusCode).toBe(429);
-      expect(blocked.json()).toEqual({
-        code: errorCodes.RATE_LIMITED,
-        message: expect.any(String),
-      });
-    } finally {
-      await limited.close();
-    }
+        expect((await post({ start: at('10:00') }, otisToken, limited)).statusCode).toBe(201);
+      } finally {
+        await limited.close();
+      }
+    });
+
+    it('Does not share the login bucket', async () => {
+      const limited = await withLimits({ rateLimitMax: 1 });
+
+      try {
+        for (const time of ['08:00', '09:00', '10:00']) {
+          expect((await post({ start: at(time) }, noraToken, limited)).statusCode).toBe(201);
+        }
+      } finally {
+        await limited.close();
+      }
+    });
   });
 });

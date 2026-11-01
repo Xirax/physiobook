@@ -15,6 +15,7 @@ const app = await buildServer({
   rateLimit: {
     max: env.AUTH_RATE_LIMIT_MAX,
     refreshMax: env.REFRESH_RATE_LIMIT_MAX,
+    bookingMax: env.BOOKING_RATE_LIMIT_MAX,
     timeWindow: env.AUTH_RATE_LIMIT_WINDOW_SECONDS * 1000,
   },
   trustProxy: env.TRUST_PROXY,

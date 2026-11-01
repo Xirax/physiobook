@@ -7,17 +7,18 @@ import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { authenticatedUser } from '../../plugins/auth.js';
-import { RATE_LIMITED_ROUTE } from '../../plugins/rate-limit.js';
+import { rateLimitedPerUserRoute } from '../../plugins/rate-limit.js';
 
 import { bookAppointment } from './appointments.service.js';
 
 export interface AppointmentsRoutesOptions {
+  bookingRateLimitMax: number;
   now?: () => Date;
 }
 
 export async function appointmentsRoutes(
   app: FastifyInstance,
-  { now = () => new Date() }: AppointmentsRoutesOptions,
+  { bookingRateLimitMax, now = () => new Date() }: AppointmentsRoutesOptions,
 ): Promise<void> {
   const typed = app.withTypeProvider<ZodTypeProvider>();
 
@@ -27,7 +28,7 @@ export async function appointmentsRoutes(
     '/appointments',
     {
       onRequest: app.requireRole('user'),
-      config: RATE_LIMITED_ROUTE,
+      config: rateLimitedPerUserRoute(bookingRateLimitMax),
       schema: {
         body: bookAppointmentRequestSchema,
         response: {

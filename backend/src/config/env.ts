@@ -7,6 +7,7 @@ const DEFAULT_REFRESH_TTL_SECONDS = 604_800;
 const DEFAULT_AUTH_RATE_LIMIT_MAX = 10;
 const DEFAULT_AUTH_RATE_LIMIT_WINDOW_SECONDS = 60;
 const DEFAULT_REFRESH_RATE_LIMIT_MAX = DEFAULT_AUTH_RATE_LIMIT_MAX * 10;
+const DEFAULT_BOOKING_RATE_LIMIT_MAX = 20;
 
 /**
  * The placeholder committed in `.env.example`, and therefore public. Rejected
@@ -102,6 +103,11 @@ export const envSchema = z.preprocess(
         .int()
         .positive()
         .default(DEFAULT_REFRESH_RATE_LIMIT_MAX),
+      BOOKING_RATE_LIMIT_MAX: z.coerce
+        .number()
+        .int()
+        .positive()
+        .default(DEFAULT_BOOKING_RATE_LIMIT_MAX),
       AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce
         .number()
         .int()
