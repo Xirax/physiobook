@@ -56,3 +56,37 @@ them is untested.
 
 > The E2E is not a duplicate of these. It exists to prove the one thing they all
 > stub: that the cookie the backend sets is the cookie the browser returns.
+
+---
+
+## E2.4 — Admin availability UI → owed by **E7**
+
+**Why deferred:** the same missing harness as E1.5 above — `e2e/` is still a
+placeholder and standing Playwright up is E7's scope. Agreed when 2.4 was
+planned.
+
+**What this costs:** the RTL suite stubs the api-client, so it proves the screen
+reacts to what `/slots` answers, but not that the real slot grid answers with
+the new hours and timezone after a real save. That seam — PUT, then the 2.3 grid
+recomputing over real Postgres — is untested end to end until E7.
+
+### Cases still owed
+
+- [ ] Admin edits the business hours, saves → the slot preview shows the slots
+      those hours open.
+- [ ] Admin changes the timezone, saves → the slot preview shows the slots in
+      the new timezone (same wall-clock hours, shifted UTC instants).
+- [ ] The **booking list** half of the ticket's case: after the save, the
+      patient's slot picker offers the new slots. Needs 3.5 merged first.
+
+### Already covered — do not rewrite
+
+| Behaviour                                                       | Where                                                                   |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Add/remove windows, close<=open and overlap inline errors       | `frontend/src/features/availability/BusinessHoursEditor.test.tsx`       |
+| Row mapping of the shared schema's issues, split-shift defaults | `frontend/src/features/availability/weekly-windows.test.ts`             |
+| Invalid timezone and out-of-range hours rejected inline         | `frontend/src/features/availability/PracticeSettingsForm.test.tsx`      |
+| Preview range and labels in the practice timezone, across DST   | `frontend/src/features/availability/slot-preview.test.ts`               |
+| Saves invalidate the slot preview                               | `frontend/src/features/availability/availability-api.test.tsx`          |
+| Preview follows a saved week and timezone; admin-only; guard    | `frontend/src/routes/admin/AdminAvailability.test.tsx`                  |
+| The slot grid itself (hours, blocks, DST, horizon)              | `backend/src/modules/availability/slot-grid*.test.ts`, `slots*.test.ts` |

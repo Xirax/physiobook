@@ -74,10 +74,13 @@ frontend/
 │   ├── components/           # reusable presentational components
 │   ├── features/             # feature-scoped logic (hooks, state, api calls)
 │   │   ├── auth/             # AuthProvider/useAuth, in-memory access token, silent refresh
+│   │   ├── availability/     # hours editor, settings form, slot preview + their TanStack Query hooks
 │   │   ├── booking/
 │   │   └── notifications/
 │   ├── lib/
 │   │   ├── api-client.ts     # typed fetch layer; attaches Bearer, single-flight 401→refresh→retry
+│   │   ├── query-client.ts   # TanStack Query defaults (no retry on a 4xx)
+│   │   ├── useUnsavedChangesGuard.ts  # beforeunload prompt while a form is dirty
 │   │   └── auth.ts           # in-memory token + session rehydration on load
 │   ├── styles/               # global.scss + _tokens.scss; components use *.module.scss
 │   └── types/
@@ -85,7 +88,7 @@ frontend/
 ├── tests/
 │   └── setup.ts              # RTL + Vitest setup
 ├── index.html
-├── vite.config.ts            # includes Vitest config (test.environment = jsdom); dev watch uses polling; /auth proxy
+├── vite.config.ts            # includes Vitest config (test.environment = jsdom); dev watch uses polling; API path proxy
 ├── tsconfig.json             # extends ../tsconfig.base.json
 ├── tsconfig.node.json        # vite.config.ts only — Node globals stay out of src/
 └── package.json
@@ -99,6 +102,8 @@ frontend/
   - **The path list lives twice, in `vite.config.ts` and `nginx.conf`, and must be changed together.** A feature prefix added to one and not the other is a 404 in exactly one environment. There is no third place to put it: one is a Node config, the other is nginx's own syntax.
   - **The api-client therefore uses relative URLs and no `credentials` mode**, and there is no `VITE_API_URL`. The browser never learns the backend's address, so nothing in the bundle has to be configured per environment. The dev server's upstream is `BACKEND_ORIGIN` — read by `vite.config.ts` in Node, deliberately without a `VITE_` prefix so it cannot reach the bundle.
   - **It also puts a reverse proxy in front of the rate limiter, which `TRUST_PROXY` has to be told about** in any deployment that routes real users this way — see §10 and the note in `.env.example`. The default stays `false`, correct for the directly-published dev stack, rather than being changed to suit an environment this repo does not yet have.
+- **Server state goes through TanStack Query (E2.4).** Feature hooks wrap `api-client` calls in queries and mutations; a mutation invalidates what it changed (a business-hours or settings save stales every cached `/slots` range) rather than editing the cache by hand. The whole cache is cleared when the session ends, so one sign-in never shows another's data.
+- **The unsaved-changes guard is `beforeunload` only (E2.4).** It covers reload, tab close and leaving the SPA, not navigation inside it: React Router's `useBlocker` needs a data router and `main.tsx` mounts `<BrowserRouter>`. Guarding in-app links means migrating to `createBrowserRouter` first — a deliberate, recorded gap, not an oversight.
 - **Vitest for the client is configured in `vite.config.ts`, not a separate file**, unlike the backend: the frontend's test environment needs the same `@vitejs/plugin-react` transform and the same `resolve.conditions` as the dev server, and a second file would be a second copy of both. `resolve.conditions` names `development` so dev, `vite build` and Vitest all read `shared`'s TypeScript source rather than a `dist/` built at some other commit.
 
 ---
