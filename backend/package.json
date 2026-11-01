@@ -26,6 +26,7 @@
     "fastify-plugin": "^5.1.0",
     "fastify-type-provider-zod": "^7.0.0",
     "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^10.3.1",
     "pg": "^8.22.0",
     "pg-boss": "^12.36.0",
     "zod": "^4.4.3"

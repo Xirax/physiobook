@@ -126,18 +126,42 @@ export const envSchema = z.preprocess(
 
 export type Env = z.infer<typeof envSchema>;
 
+const booleanFlagSchema = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((value) => value === 'true');
+
 /**
  * The worker is its own process and needs none of the API's secrets: asking it
  * for JWT_SECRET would only spread a key to a container that never signs.
+ * Mail is the reverse — only jobs send it, so only the worker holds SMTP
+ * credentials. Host, port and sender carry no default: a deployment that forgot
+ * them must not boot and quietly drop every notification.
  */
 export const workerEnvSchema = z.preprocess(
   blankToUndefined,
-  z.object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    DATABASE_URL: z.url(),
-    WORKER_HEALTH_PORT: z.coerce.number().int().positive().max(65_535).default(3001),
-    WORKER_HEALTH_HOST: z.string().min(1).default('0.0.0.0'),
-  }),
+  z
+    .object({
+      NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+      DATABASE_URL: z.url(),
+      WORKER_HEALTH_PORT: z.coerce.number().int().positive().max(65_535).default(3001),
+      WORKER_HEALTH_HOST: z.string().min(1).default('0.0.0.0'),
+      MAIL_HOST: z.string().min(1),
+      MAIL_PORT: z.coerce.number().int().positive().max(65_535),
+      MAIL_SECURE: booleanFlagSchema,
+      MAIL_USER: z.string().optional(),
+      MAIL_PASSWORD: z.string().optional(),
+      MAIL_FROM: z.email(),
+    })
+    .superRefine((env, ctx) => {
+      if ((env.MAIL_USER === undefined) !== (env.MAIL_PASSWORD === undefined)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [env.MAIL_USER === undefined ? 'MAIL_USER' : 'MAIL_PASSWORD'],
+          message: 'MAIL_USER and MAIL_PASSWORD are set together or not at all',
+        });
+      }
+    }),
 );
 
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
