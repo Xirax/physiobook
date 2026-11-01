@@ -38,6 +38,13 @@ describe('Error handler', () => {
       );
     });
 
+    typed.get('/throws-domain-with-extensions', () => {
+      throw new DomainError(errorCodes.TIME_OFF_CONFLICT, 409, 'Overlaps', {
+        conflicts: [],
+        code: 'NOT_THIS_ONE',
+      });
+    });
+
     typed.get(
       '/breaks-its-own-contract',
       { schema: { response: { 200: z.strictObject({ expected: z.string() }) } } },
@@ -80,6 +87,17 @@ describe('Error handler', () => {
     expect(response.json()).toEqual({
       code: errorCodes.EMAIL_TAKEN,
       message: 'That email address is already registered',
+    });
+  });
+
+  it('Adds the extensions of a domain error to the body, never over its code', async () => {
+    const response = await app.inject({ method: 'GET', url: '/throws-domain-with-extensions' });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      code: errorCodes.TIME_OFF_CONFLICT,
+      message: 'Overlaps',
+      conflicts: [],
     });
   });
 

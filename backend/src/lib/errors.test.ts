@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AlreadyCancelledError,
   DomainError,
   EmailTakenError,
   findDatabaseError,
   InvalidCredentialsError,
   isDomainError,
   isPostgresError,
+  NotFoundError,
   PG_UNIQUE_VIOLATION,
   RateLimitedError,
+  TimeOffConflictError,
+  TimeOffInPastError,
 } from './errors.js';
 
 describe('Domain errors', () => {
@@ -43,6 +47,33 @@ describe('Domain errors', () => {
     expect(error.code).toBe('RATE_LIMITED');
     expect(error.statusCode).toBe(429);
     expect(error.message).toContain('1 minute');
+  });
+
+  it('Carries no extensions unless given some', () => {
+    expect(new EmailTakenError().extensions).toEqual({});
+  });
+
+  it('Answers a time-off conflict with 409 and the conflicting blocks', () => {
+    const conflict = {
+      id: '11111111-1111-4111-8111-111111111111',
+      kind: 'appointment' as const,
+      start: '2026-11-02T10:00:00.000Z',
+      end: '2026-11-02T11:00:00.000Z',
+    };
+    const error = new TimeOffConflictError([conflict]);
+
+    expect(error.code).toBe('TIME_OFF_CONFLICT');
+    expect(error.statusCode).toBe(409);
+    expect(error.extensions).toEqual({ conflicts: [conflict] });
+  });
+
+  it.each([
+    [new TimeOffInPastError(), 'TIME_OFF_IN_PAST', 422],
+    [new NotFoundError('No such time off'), 'NOT_FOUND', 404],
+    [new AlreadyCancelledError('Already cancelled'), 'ALREADY_CANCELLED', 409],
+  ])('Maps %s to its code and status', (error, code, status) => {
+    expect(error.code).toBe(code);
+    expect(error.statusCode).toBe(status);
   });
 
   it('Does not treat an ordinary error as a domain error', () => {
