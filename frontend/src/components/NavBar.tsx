@@ -22,7 +22,7 @@ export const NavBar = ({ items, userName, onLogout, loggingOut = false }: NavBar
       <ul className={styles.list}>
         {items.map(({ path, label }) => (
           <li key={path}>
-            <NavLink className={styles.link ?? ''} to={path}>
+            <NavLink className={styles.link ?? ''} to={path} end>
               {label}
             </NavLink>
           </li>

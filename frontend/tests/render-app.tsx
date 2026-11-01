@@ -28,13 +28,25 @@ export interface AppStubOptions {
   session?: PublicUser | null;
   signsInAs?: PublicUser;
   refresh?: () => Promise<string | null>;
+  /** Answers for any other path; return `undefined` to fall through to the auth stubs. */
+  answer?: (path: string, options?: { method?: string; body?: unknown }) => unknown;
 }
 
-export const stubApi = ({ session = null, signsInAs, refresh }: AppStubOptions = {}) => ({
+export const stubApi = ({ session = null, signsInAs, refresh, answer }: AppStubOptions = {}) => ({
   refresh: vi.fn(refresh ?? (() => Promise.resolve(session === null ? null : 'access-token'))),
 
-  request: vi.fn((path: string) => {
+  request: vi.fn((path: string, options?: { method?: string; body?: unknown }) => {
     if (path === ME_PATH) return Promise.resolve(session);
+
+    if (answer !== undefined) {
+      try {
+        const answered = answer(path, options);
+
+        if (answered !== undefined) return Promise.resolve(answered);
+      } catch (error) {
+        return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    }
 
     if ((path === LOGIN_PATH || path === REGISTER_PATH) && signsInAs !== undefined) {
       return Promise.resolve({ user: signsInAs, token: 'access-token' });

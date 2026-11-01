@@ -6,6 +6,7 @@ export const paths = {
   register: '/register',
   appointments: '/appointments',
   admin: '/admin',
+  adminAvailability: '/admin/availability',
 } as const;
 
 export function homeFor(role: UserRole): string {
