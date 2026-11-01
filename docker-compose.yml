@@ -98,8 +98,6 @@ services:
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX}
       AUTH_RATE_LIMIT_WINDOW_SECONDS: ${AUTH_RATE_LIMIT_WINDOW_SECONDS}
       TRUST_PROXY: ${TRUST_PROXY}
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
     # Deliberately NOT published. The frontend container proxies /auth to this
     # service, and TRUST_PROXY=1 makes the API take the client address from the
     # X-Forwarded-For that proxy writes. A second, direct route in from the host
@@ -110,8 +108,6 @@ services:
     # this port for debugging.
     depends_on:
       postgres:
-        condition: service_healthy
-      mailpit:
         condition: service_healthy
     healthcheck:
       # TCP-level: connect to the listening port and hang up. Uses node because
@@ -142,9 +138,20 @@ services:
       NODE_ENV: ${NODE_ENV}
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT}
+      # Mail is sent from jobs only (4.2), so the worker — not the API — holds
+      # the transport. Host and port are the in-network Mailpit, like the
+      # DATABASE_URL above; a deployment replaces them with its provider.
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_SECURE: ${MAIL_SECURE}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM}
     # Not published: /health exists for the healthcheck below, nothing else.
     depends_on:
       postgres:
+        condition: service_healthy
+      mailpit:
         condition: service_healthy
     # SIGTERM drains in-flight jobs for up to SHUTDOWN_TIMEOUT_MS (20s,
     # backend/src/jobs/worker.ts). Docker's default 10s grace would SIGKILL it

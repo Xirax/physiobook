@@ -197,7 +197,12 @@ describe('loadEnv', () => {
 });
 
 describe('loadWorkerEnv', () => {
-  const valid = { DATABASE_URL: 'postgres://user:pw@localhost:5432/physiobook' };
+  const valid = {
+    DATABASE_URL: 'postgres://user:pw@localhost:5432/physiobook',
+    MAIL_HOST: 'mailpit',
+    MAIL_PORT: '1025',
+    MAIL_FROM: 'no-reply@physiobook.local',
+  };
 
   it('Boots without any of the API secrets and applies defaults', () => {
     const env = loadWorkerEnv(valid);
@@ -207,6 +212,10 @@ describe('loadWorkerEnv', () => {
       DATABASE_URL: valid.DATABASE_URL,
       WORKER_HEALTH_PORT: 3001,
       WORKER_HEALTH_HOST: '0.0.0.0',
+      MAIL_HOST: 'mailpit',
+      MAIL_PORT: 1025,
+      MAIL_SECURE: false,
+      MAIL_FROM: 'no-reply@physiobook.local',
     });
   });
 
@@ -223,5 +232,51 @@ describe('loadWorkerEnv', () => {
     expect(() => loadWorkerEnv({ ...valid, WORKER_HEALTH_PORT: '70000' })).toThrow(
       /WORKER_HEALTH_PORT/,
     );
+  });
+
+  describe('Mail transport', () => {
+    it.each(['MAIL_HOST', 'MAIL_PORT', 'MAIL_FROM'] as const)(
+      'Fails fast when %s is missing or blank',
+      (key) => {
+        const { [key]: _omitted, ...without } = valid;
+
+        expect(() => loadWorkerEnv(without)).toThrow(new RegExp(key));
+        expect(() => loadWorkerEnv({ ...valid, [key]: '' })).toThrow(new RegExp(key));
+      },
+    );
+
+    it('Rejects a sender that is not an email address', () => {
+      expect(() => loadWorkerEnv({ ...valid, MAIL_FROM: 'PhysioBook' })).toThrow(/MAIL_FROM/);
+    });
+
+    it('Rejects an out-of-range port', () => {
+      expect(() => loadWorkerEnv({ ...valid, MAIL_PORT: '70000' })).toThrow(/MAIL_PORT/);
+    });
+
+    it('Reads MAIL_SECURE as a boolean and refuses anything but true/false', () => {
+      expect(loadWorkerEnv({ ...valid, MAIL_SECURE: 'true' }).MAIL_SECURE).toBe(true);
+      expect(loadWorkerEnv({ ...valid, MAIL_SECURE: '' }).MAIL_SECURE).toBe(false);
+      expect(() => loadWorkerEnv({ ...valid, MAIL_SECURE: 'yes' })).toThrow(/MAIL_SECURE/);
+    });
+
+    it('Accepts credentials given as a pair', () => {
+      const env = loadWorkerEnv({ ...valid, MAIL_USER: 'apikey', MAIL_PASSWORD: 's3cret' });
+
+      expect(env.MAIL_USER).toBe('apikey');
+      expect(env.MAIL_PASSWORD).toBe('s3cret');
+    });
+
+    it('Rejects a user without a password and a password without a user', () => {
+      expect(() => loadWorkerEnv({ ...valid, MAIL_USER: 'apikey' })).toThrow(/MAIL_PASSWORD/);
+      expect(() => loadWorkerEnv({ ...valid, MAIL_PASSWORD: 's3cret' })).toThrow(/MAIL_USER/);
+    });
+
+    it('Never puts the mail password in the error message', () => {
+      const secret = 'smtp-secret-value';
+
+      expect(() => loadWorkerEnv({ ...valid, MAIL_HOST: '', MAIL_PASSWORD: secret })).toThrow(
+        expect.not.stringContaining(secret) as unknown as string,
+      );
+    });
   });
 });
