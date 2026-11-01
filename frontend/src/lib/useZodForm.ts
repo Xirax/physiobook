@@ -23,6 +23,8 @@ export interface ZodFormOptions<Values extends FormValues> {
 export interface ZodForm<Values extends FormValues> {
   formError: string | null;
   pending: boolean;
+  /** Differs from the initial values, or from the last values a submit landed. */
+  dirty: boolean;
   fieldProps: (name: keyof Values & string) => FieldProps;
   handleSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
@@ -77,6 +79,7 @@ export function useZodForm<Values extends FormValues>({
   describeError,
 }: ZodFormOptions<Values>): ZodForm<Values> {
   const [values, setValues] = useState(initialValues);
+  const [baseline, setBaseline] = useState(initialValues);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [submitted, setSubmitted] = useState(false);
   const [rejected, setRejected] = useState<FormValues>({});
@@ -84,6 +87,7 @@ export function useZodForm<Values extends FormValues>({
   const [pending, setPending] = useState(false);
 
   const invalid = firstIssuePerField(schema, values);
+  const dirty = Object.keys(values).some((name) => values[name] !== baseline[name]);
 
   const fieldProps = (name: keyof Values & string): FieldProps => ({
     name,
@@ -121,7 +125,12 @@ export function useZodForm<Values extends FormValues>({
 
     setPending(true);
 
+    const submitted = values;
+
     void onSubmit(parsed.data)
+      .then(() => {
+        setBaseline(submitted);
+      })
       .catch((error: unknown) => {
         setRejected(fieldErrorsFromApi(error));
         setFormError(describeError(error));
@@ -131,5 +140,5 @@ export function useZodForm<Values extends FormValues>({
       });
   };
 
-  return { formError, pending, fieldProps, handleSubmit };
+  return { formError, pending, dirty, fieldProps, handleSubmit };
 }
