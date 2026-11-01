@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { check, customType, index, pgEnum, pgTable, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  check,
+  customType,
+  index,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 import { users } from './users.js';
 
@@ -39,6 +48,7 @@ export const calendarBlocks = pgTable(
     kind: blockKind().notNull(),
     period: tstzrange().notNull(),
     status: blockStatus().notNull().default('active'),
+    note: text(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -58,6 +68,10 @@ export const calendarBlocks = pgTable(
         date_trunc('hour', lower(${table.period}), 'UTC') = lower(${table.period})
         AND upper(${table.period}) = lower(${table.period}) + interval '1 hour'
       )`,
+    ),
+    check(
+      'calendar_blocks_note_time_off_only',
+      sql`${table.kind} = 'time_off' OR ${table.note} IS NULL`,
     ),
   ],
 );

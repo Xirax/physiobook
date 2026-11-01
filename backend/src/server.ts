@@ -4,6 +4,7 @@ import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod
 import { authRoutes } from './modules/auth/auth.routes.js';
 import { businessHoursRoutes } from './modules/availability/business-hours.routes.js';
 import { slotsRoutes } from './modules/availability/slots.routes.js';
+import { timeOffRoutes } from './modules/availability/time-off.routes.js';
 import { settingsRoutes } from './modules/settings/settings.routes.js';
 import authPlugin from './plugins/auth.js';
 import cookiePlugin from './plugins/cookie.js';
@@ -62,6 +63,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   await app.register(settingsRoutes);
   await app.register(businessHoursRoutes);
   await app.register(slotsRoutes, options.now === undefined ? {} : { now: options.now });
+  await app.register(timeOffRoutes, options.now === undefined ? {} : { now: options.now });
 
   return app;
 }

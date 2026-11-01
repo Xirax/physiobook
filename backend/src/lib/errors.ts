@@ -1,14 +1,22 @@
-import { errorCodes, type ErrorCode } from '@physiobook/shared';
+import { errorCodes, type BlockConflict, type ErrorCode } from '@physiobook/shared';
 
 export class DomainError extends Error {
   readonly code: ErrorCode;
   readonly statusCode: number;
+  /** Extra top-level fields for the response body; the route's schema must declare them. */
+  readonly extensions: Readonly<Record<string, unknown>>;
 
-  constructor(code: ErrorCode, statusCode: number, message: string) {
+  constructor(
+    code: ErrorCode,
+    statusCode: number,
+    message: string,
+    extensions: Record<string, unknown> = {},
+  ) {
     super(message);
     this.name = new.target.name;
     this.code = code;
     this.statusCode = statusCode;
+    this.extensions = extensions;
   }
 }
 
@@ -42,11 +50,38 @@ export class RateLimitedError extends DomainError {
   }
 }
 
+export class NotFoundError extends DomainError {
+  constructor(message: string) {
+    super(errorCodes.NOT_FOUND, 404, message);
+  }
+}
+
+export class AlreadyCancelledError extends DomainError {
+  constructor(message: string) {
+    super(errorCodes.ALREADY_CANCELLED, 409, message);
+  }
+}
+
+export class TimeOffConflictError extends DomainError {
+  constructor(conflicts: BlockConflict[]) {
+    super(errorCodes.TIME_OFF_CONFLICT, 409, 'That time overlaps booked appointments or time off', {
+      conflicts,
+    });
+  }
+}
+
+export class TimeOffInPastError extends DomainError {
+  constructor() {
+    super(errorCodes.TIME_OFF_IN_PAST, 422, 'That time off is already over');
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }
 
 export const PG_UNIQUE_VIOLATION = '23505';
+export const PG_EXCLUSION_VIOLATION = '23P01';
 
 export function findDatabaseError(
   error: unknown,

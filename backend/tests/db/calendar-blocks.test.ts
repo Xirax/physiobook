@@ -7,6 +7,7 @@ import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 const NO_OVERLAP = { code: '23P01', constraint: 'calendar_blocks_no_overlap' };
 const ON_THE_HOUR = { code: '23514', constraint: 'calendar_blocks_appointment_on_the_hour' };
 const BOUNDED = { code: '23514', constraint: 'calendar_blocks_period_bounded' };
+const NOTE_TIME_OFF_ONLY = { code: '23514', constraint: 'calendar_blocks_note_time_off_only' };
 
 const at = (time: string) => `2026-03-02T${time}:00Z`;
 
@@ -44,12 +45,13 @@ describe('calendar_blocks and appointments', () => {
     status?: 'active' | 'cancelled' | 'cancelled_by_admin';
     practitioner?: string;
     bounds?: string;
+    note?: string;
   }
 
   const insertBlock = async (start: string, end: string | null, options: BlockOptions = {}) => {
     const { rows } = await database.pool.query<{ id: string }>(
-      `INSERT INTO calendar_blocks (practitioner_id, kind, status, period)
-       VALUES ($1, $2, $3, tstzrange($4, $5, $6))
+      `INSERT INTO calendar_blocks (practitioner_id, kind, status, period, note)
+       VALUES ($1, $2, $3, tstzrange($4, $5, $6), $7)
        RETURNING id`,
       [
         options.practitioner ?? practitionerId,
@@ -58,6 +60,7 @@ describe('calendar_blocks and appointments', () => {
         start,
         end,
         options.bounds ?? '[)',
+        options.note ?? null,
       ],
     );
     return rows[0]!.id;
@@ -195,6 +198,29 @@ describe('calendar_blocks and appointments', () => {
         [id],
       );
       expect(rows[0]).toEqual({ moved: true });
+    });
+  });
+
+  describe('note', () => {
+    it('Keeps the note of a time-off block', async () => {
+      const id = await insertBlock(at('09:00'), at('13:00'), { kind: 'time_off', note: 'Dentist' });
+
+      const { rows } = await database.pool.query('SELECT note FROM calendar_blocks WHERE id = $1', [
+        id,
+      ]);
+      expect(rows[0]).toEqual({ note: 'Dentist' });
+    });
+
+    it('Leaves the note optional on a time-off block', async () => {
+      await expect(
+        insertBlock(at('09:00'), at('13:00'), { kind: 'time_off' }),
+      ).resolves.toBeDefined();
+    });
+
+    it('Refuses a note on an appointment block', async () => {
+      await expect(
+        insertBlock(at('10:00'), at('11:00'), { note: 'Dentist' }),
+      ).rejects.toMatchObject(NOTE_TIME_OFF_ONLY);
     });
   });
 

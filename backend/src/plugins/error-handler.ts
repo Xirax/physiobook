@@ -60,6 +60,7 @@ async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
       if (error.statusCode === 401) reply.header('WWW-Authenticate', 'Bearer');
 
       return reply.status(error.statusCode).send({
+        ...error.extensions,
         code: error.code,
         message: error.message,
       } satisfies ErrorResponse);
