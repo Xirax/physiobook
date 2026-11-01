@@ -148,7 +148,11 @@ backend/
 │   │   │   ├── slots.service.ts           # settings + hours + active blocks → bookable slots
 │   │   │   ├── slots.service.test.ts      # Testcontainers: block kinds/statuses, practitioner scope, clock
 │   │   │   ├── slots.routes.ts            # GET /slots (any auth)
-│   │   │   └── slots.test.ts              # inject(): range cap, validation, auth
+│   │   │   ├── slots.test.ts              # inject(): range cap, validation, auth
+│   │   │   ├── time-off.service.ts        # create (EXCLUDE decides, 409 lists conflicts) / cancel (one conditional UPDATE)
+│   │   │   ├── time-off.service.test.ts   # Testcontainers: overlap kinds, statuses, scope, clock, create + cancel races
+│   │   │   ├── time-off.routes.ts         # POST /time-off, DELETE /time-off/:id (admin)
+│   │   │   └── time-off.test.ts           # inject(): 201/409/422/400/403/401, 204/404/409/422, slots hidden and freed
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
 │   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
