@@ -134,9 +134,10 @@ backend/
 │   │   │   ├── auth.logout.test.ts   # POST /auth/logout (incl. the instant-kill proof)
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
-│   │   │   ├── appointments.routes.ts
-│   │   │   ├── appointments.service.ts      # booking, cancel, race handling
-│   │   │   └── appointments.test.ts
+│   │   │   ├── appointments.routes.ts       # POST /appointments (user)
+│   │   │   ├── appointments.service.ts      # isSlotBookable → 422, then block + appointment in one transaction; EXCLUDE → 409 SLOT_TAKEN
+│   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback
+│   │   │   └── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
 │   │   ├── availability/     # admin business hours + time off
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction
@@ -153,6 +154,8 @@ backend/
 │   │   │   ├── time-off.service.test.ts   # Testcontainers: overlap kinds, statuses, scope, clock, create + cancel races
 │   │   │   ├── time-off.routes.ts         # POST /time-off, DELETE /time-off/:id (admin)
 │   │   │   └── time-off.test.ts           # inject(): 201/409/422/400/403/401, 204/404/409/422, slots hidden and freed
+│   │   ├── practitioner/
+│   │   │   └── practitioner.service.ts  # findPractitionerId() — the single admin (slots + booking)
 │   │   ├── dashboard/        # workload aggregation
 │   │   └── notifications/    # schedules pg-boss jobs
 │   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
@@ -287,7 +290,7 @@ db/
 shared/
 ├── src/
 │   ├── schemas/              # Zod schemas for requests & responses
-│   │   ├── appointment.ts
+│   │   ├── appointment.ts    # book request { start } (strict: no user_id), appointment { id, start, end, status }
 │   │   ├── business-hours.ts # weekly windows: HH:MM, close > open, no same-day overlap
 │   │   ├── auth.ts           # register/login payloads (register: password min 8 / max 72 bytes for bcrypt)
 │   │   └── error.ts          # the one error body: { code, message, details? } + the closed code list
