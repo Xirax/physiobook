@@ -44,6 +44,30 @@ describe('SlotPreview', () => {
     expect(screen.getByText(/No bookable slots in the next 7 days/)).toBeInTheDocument();
   });
 
+  it('Keeps the earlier slots after a failed refresh, and says so', async () => {
+    const onRetry = vi.fn();
+
+    render(
+      <SlotPreview
+        state={{
+          status: 'stale',
+          onRetry,
+          data: {
+            timezone: 'Europe/Warsaw',
+            slots: [{ start: '2026-11-02T08:00:00.000Z', end: '2026-11-02T09:00:00.000Z' }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The latest slots could not be fetched');
+    expect(screen.getByRole('list', { name: 'Monday 2 November' })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+    expect(onRetry).toHaveBeenCalledOnce();
+  });
+
   it('Offers a retry when the slots could not be loaded', async () => {
     const onRetry = vi.fn();
 

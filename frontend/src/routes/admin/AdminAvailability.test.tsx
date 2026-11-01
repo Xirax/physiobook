@@ -102,6 +102,25 @@ describe('Reaching the availability screen', () => {
     expect(currentPath()).toBe('/appointments');
   });
 
+  it('Says what it is loading until the hours and settings arrive', async () => {
+    const healthy = practice();
+
+    renderAppAt('/admin/availability', {
+      session: testAdmin,
+      answer: (path, options) =>
+        path === BUSINESS_HOURS_PATH || path === SETTINGS_PATH
+          ? new Promise(() => undefined)
+          : healthy(path, options),
+    });
+
+    await screen.findByRole('heading', { name: 'Availability', level: 1 });
+
+    expect(screen.getAllByRole('status').map((status) => status.textContent)).toEqual([
+      'Loading the business hours…',
+      'Loading the practice settings…',
+    ]);
+  });
+
   it('Says when the hours could not be loaded, and loads them on retry', async () => {
     let failing = true;
     const healthy = practice();
@@ -133,7 +152,7 @@ describe('When a background refresh fails mid-edit', () => {
     const failing = new Set<string>();
 
     const answer = (path: string, options?: { method?: string; body?: unknown }) => {
-      if (failing.has(path)) {
+      if ([...failing].some((failingPath) => path.startsWith(failingPath))) {
         throw new ApiError(503, { code: errorCodes.INTERNAL_ERROR, message: 'unavailable' });
       }
 
@@ -173,6 +192,21 @@ describe('When a background refresh fails mid-edit', () => {
       'The latest practice settings could not be fetched',
     );
     expect(screen.getByLabelText('Reminder lead time (hours)')).toHaveValue('240');
+  });
+
+  it('Keeps showing the earlier slots, and says they could not be refreshed', async () => {
+    const { answer, failing } = flaky();
+    const { queryClient } = await openPage(answer);
+
+    await preview().findByText(/No bookable slots/);
+
+    failing.add(SLOTS_PATH);
+    await act(() => queryClient.refetchQueries({ queryKey: availabilityKeys.allSlots }));
+
+    expect(await preview().findByRole('alert')).toHaveTextContent(
+      'The latest slots could not be fetched',
+    );
+    expect(preview().getByText(/No bookable slots/)).toBeInTheDocument();
   });
 });
 

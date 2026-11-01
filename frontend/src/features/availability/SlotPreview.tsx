@@ -7,11 +7,22 @@ import { groupSlotsByDay, PREVIEW_DAYS } from './slot-preview';
 export type SlotPreviewState =
   | { status: 'pending' }
   | { status: 'error'; onRetry: () => void }
-  | { status: 'success'; data: SlotsResponse };
+  | { status: 'success'; data: SlotsResponse }
+  /** A refresh failed, so `data` is what was loaded before it. */
+  | { status: 'stale'; data: SlotsResponse; onRetry: () => void };
 
 export interface SlotPreviewProps {
   state: SlotPreviewState;
 }
+
+const StaleNotice = ({ onRetry }: { onRetry: () => void }) => (
+  <div className={styles.alert} role="alert">
+    <p>The latest slots could not be fetched. These are the ones loaded earlier.</p>
+    <button className={styles.secondary} type="button" onClick={onRetry}>
+      Try again
+    </button>
+  </div>
+);
 
 const PreviewBody = ({ state }: SlotPreviewProps) => {
   if (state.status === 'pending') return <p role="status">Loading the bookable slots…</p>;
@@ -66,9 +77,11 @@ export const SlotPreview = ({ state }: SlotPreviewProps) => {
       <p className={styles.hint}>
         What patients can book over the next {PREVIEW_DAYS} days with the saved hours and settings.
         Taken and past slots are left out.
-        {state.status === 'success' && ` Times are shown in ${state.data.timezone}.`}
+        {(state.status === 'success' || state.status === 'stale') &&
+          ` Times are shown in ${state.data.timezone}.`}
       </p>
 
+      {state.status === 'stale' && <StaleNotice onRetry={state.onRetry} />}
       <PreviewBody state={state} />
     </section>
   );

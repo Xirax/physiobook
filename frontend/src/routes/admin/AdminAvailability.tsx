@@ -39,7 +39,7 @@ const Loaded = <Data,>({ what, query, children }: LoadedProps<Data>) => {
   };
 
   if (query.data === undefined) {
-    if (!query.isError) return <p role="status">{`Loading the ${what}�`}</p>;
+    if (!query.isError) return <p role="status">{`Loading the ${what}…`}</p>;
 
     return (
       <div className={styles.failed} role="alert">
@@ -70,23 +70,25 @@ const PracticePreview = ({ timezone }: { timezone: string }) => {
   const now = useNow(PREVIEW_CLOCK_MS);
   const slots = useBookableSlots(previewRange(now, timezone));
 
-  if (slots.data !== undefined)
-    return <SlotPreview state={{ status: 'success', data: slots.data }} />;
+  const onRetry = () => {
+    void slots.refetch();
+  };
 
-  if (slots.isError) {
+  if (slots.data === undefined) {
     return (
-      <SlotPreview
-        state={{
-          status: 'error',
-          onRetry: () => {
-            void slots.refetch();
-          },
-        }}
-      />
+      <SlotPreview state={slots.isError ? { status: 'error', onRetry } : { status: 'pending' }} />
     );
   }
 
-  return <SlotPreview state={{ status: 'pending' }} />;
+  return (
+    <SlotPreview
+      state={
+        slots.isError
+          ? { status: 'stale', data: slots.data, onRetry }
+          : { status: 'success', data: slots.data }
+      }
+    />
+  );
 };
 
 export const AdminAvailability = () => {
