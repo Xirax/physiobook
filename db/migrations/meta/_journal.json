@@ -43,6 +43,13 @@
       "when": 1791141100274,
       "tag": "0005_business_hours",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793529469157,
+      "tag": "0006_calendar_blocks_appointments",
+      "breakpoints": true
     }
   ]
 }
