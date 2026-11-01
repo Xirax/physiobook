@@ -1,5 +1,6 @@
 import type { UpdatePracticeSettingsRequest, WeeklyBusinessHours } from '@physiobook/shared';
-import { useState } from 'react';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { useState, type ReactNode } from 'react';
 
 import {
   useBookableSlots,
@@ -12,29 +13,65 @@ import { BusinessHoursEditor } from '../../features/availability/BusinessHoursEd
 import { PracticeSettingsForm } from '../../features/availability/PracticeSettingsForm';
 import { previewRange } from '../../features/availability/slot-preview';
 import { SlotPreview } from '../../features/availability/SlotPreview';
+import { useNow } from '../../lib/useNow';
 import { useUnsavedChangesGuard } from '../../lib/useUnsavedChangesGuard';
 import pageStyles from '../Page.module.scss';
 import styles from './AdminAvailability.module.scss';
 
-interface LoadFailedProps {
+// The preview's "today" has to roll over at the practice's midnight while the
+// page is open; a minute late is close enough for a preview.
+const PREVIEW_CLOCK_MS = 60_000;
+
+interface LoadedProps<Data> {
   what: string;
-  onRetry: () => void;
+  query: UseQueryResult<Data>;
+  children: (data: Data) => ReactNode;
 }
 
-const LoadFailed = ({ what, onRetry }: LoadFailedProps) => (
-  <div className={styles.failed} role="alert">
-    <p>{`The ${what} could not be loaded.`}</p>
-    <button type="button" onClick={onRetry}>
-      Try again
-    </button>
-  </div>
-);
+/**
+ * Keyed on whether data is cached, not on the query's status: a failed
+ * background refetch flips the status to `error` while the data is still
+ * there, and unmounting the form at that point would throw away its edits.
+ */
+const Loaded = <Data,>({ what, query, children }: LoadedProps<Data>) => {
+  const retry = () => {
+    void query.refetch();
+  };
+
+  if (query.data === undefined) {
+    if (!query.isError) return <p role="status">{`Loading the ${what}�`}</p>;
+
+    return (
+      <div className={styles.failed} role="alert">
+        <p>{`The ${what} could not be loaded.`}</p>
+        <button type="button" onClick={retry}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {query.isError && (
+        <div className={styles.failed} role="alert">
+          <p>{`The latest ${what} could not be fetched. You are editing the copy loaded earlier.`}</p>
+          <button type="button" onClick={retry}>
+            Try again
+          </button>
+        </div>
+      )}
+      {children(query.data)}
+    </>
+  );
+};
 
 const PracticePreview = ({ timezone }: { timezone: string }) => {
-  const [openedAt] = useState(() => new Date());
-  const slots = useBookableSlots(previewRange(openedAt, timezone));
+  const now = useNow(PREVIEW_CLOCK_MS);
+  const slots = useBookableSlots(previewRange(now, timezone));
 
-  if (slots.isPending) return <SlotPreview state={{ status: 'pending' }} />;
+  if (slots.data !== undefined)
+    return <SlotPreview state={{ status: 'success', data: slots.data }} />;
 
   if (slots.isError) {
     return (
@@ -49,7 +86,7 @@ const PracticePreview = ({ timezone }: { timezone: string }) => {
     );
   }
 
-  return <SlotPreview state={{ status: 'success', data: slots.data }} />;
+  return <SlotPreview state={{ status: 'pending' }} />;
 };
 
 export const AdminAvailability = () => {
@@ -80,42 +117,28 @@ export const AdminAvailability = () => {
 
       <div className={styles.layout}>
         <div className={styles.editors}>
-          {hours.isPending && <p role="status">Loading the business hours…</p>}
-          {hours.isError && (
-            <LoadFailed
-              what="business hours"
-              onRetry={() => {
-                void hours.refetch();
-              }}
-            />
-          )}
-          {hours.isSuccess && (
-            <BusinessHoursEditor
-              initial={hours.data}
-              onSave={onSaveHours}
-              onDirtyChange={setHoursDirty}
-            />
-          )}
+          <Loaded what="business hours" query={hours}>
+            {(week) => (
+              <BusinessHoursEditor
+                initial={week}
+                onSave={onSaveHours}
+                onDirtyChange={setHoursDirty}
+              />
+            )}
+          </Loaded>
 
-          {settings.isPending && <p role="status">Loading the practice settings…</p>}
-          {settings.isError && (
-            <LoadFailed
-              what="practice settings"
-              onRetry={() => {
-                void settings.refetch();
-              }}
-            />
-          )}
-          {settings.isSuccess && (
-            <PracticeSettingsForm
-              initial={settings.data}
-              onSave={onSaveSettings}
-              onDirtyChange={setSettingsDirty}
-            />
-          )}
+          <Loaded what="practice settings" query={settings}>
+            {(saved) => (
+              <PracticeSettingsForm
+                initial={saved}
+                onSave={onSaveSettings}
+                onDirtyChange={setSettingsDirty}
+              />
+            )}
+          </Loaded>
         </div>
 
-        {settings.isSuccess && <PracticePreview timezone={settings.data.timezone} />}
+        {settings.data !== undefined && <PracticePreview timezone={settings.data.timezone} />}
       </div>
     </main>
   );

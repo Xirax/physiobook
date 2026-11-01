@@ -1,10 +1,11 @@
 import { errorCodes } from '@physiobook/shared';
 import type { PracticeSettings, SlotsResponse, WeeklyBusinessHours } from '@physiobook/shared';
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import {
+  availabilityKeys,
   BUSINESS_HOURS_PATH,
   SETTINGS_PATH,
   SLOTS_PATH,
@@ -123,6 +124,55 @@ describe('Reaching the availability screen', () => {
     await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
 
     expect(await screen.findByRole('form', { name: 'Business hours' })).toBeInTheDocument();
+  });
+});
+
+describe('When a background refresh fails mid-edit', () => {
+  const flaky = () => {
+    const healthy = practice();
+    const failing = new Set<string>();
+
+    const answer = (path: string, options?: { method?: string; body?: unknown }) => {
+      if (failing.has(path)) {
+        throw new ApiError(503, { code: errorCodes.INTERNAL_ERROR, message: 'unavailable' });
+      }
+
+      return healthy(path, options);
+    };
+
+    return { answer, failing };
+  };
+
+  it('Keeps the hours edits on screen and says the refresh failed', async () => {
+    const { answer, failing } = flaky();
+    const { queryClient } = await openPage(answer);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add a window on Tuesday' }));
+
+    failing.add(BUSINESS_HOURS_PATH);
+    await act(() => queryClient.refetchQueries({ queryKey: availabilityKeys.businessHours }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The latest business hours could not be fetched',
+    );
+    expect(screen.getByRole('group', { name: 'Tuesday window 1' })).toBeInTheDocument();
+    expect(unloadIsHeld()).toBe(true);
+  });
+
+  it('Keeps the settings edits on screen too', async () => {
+    const { answer, failing } = flaky();
+    const { queryClient } = await openPage(answer);
+
+    const reminder = screen.getByLabelText('Reminder lead time (hours)');
+    await userEvent.type(reminder, '0');
+
+    failing.add(SETTINGS_PATH);
+    await act(() => queryClient.refetchQueries({ queryKey: availabilityKeys.settings }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The latest practice settings could not be fetched',
+    );
+    expect(screen.getByLabelText('Reminder lead time (hours)')).toHaveValue('240');
   });
 });
 
