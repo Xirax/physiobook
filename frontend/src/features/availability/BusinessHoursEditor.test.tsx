@@ -95,7 +95,11 @@ describe('Adding and removing windows', () => {
       windows: [{ day_of_week: 1, opens_at: '18:00', closes_at: '23:59' }],
     });
 
-    expect(screen.getByRole('button', { name: 'Add a window on Monday' })).toBeDisabled();
+    const monday = screen.getByRole('button', { name: 'Add a window on Monday' });
+
+    expect(monday).toBeDisabled();
+    expect(monday).toHaveAccessibleDescription('The day already runs to 23:59.');
+    expect(day('Monday').getByText('The day already runs to 23:59.')).toBeVisible();
     expect(screen.getByRole('button', { name: 'Add a window on Tuesday' })).toBeEnabled();
   });
 

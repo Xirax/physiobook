@@ -1,4 +1,5 @@
 import type { BusinessHoursWindow } from '@physiobook/shared';
+import { useId } from 'react';
 
 import styles from './AvailabilityForm.module.scss';
 import type { RowErrors, WindowRow } from './weekly-windows';
@@ -22,36 +23,46 @@ export const DayFieldset = ({
   onRemove,
   canAdd,
   onAdd,
-}: DayFieldsetProps) => (
-  <fieldset className={styles.day}>
-    <legend className={styles.dayName}>{name}</legend>
+}: DayFieldsetProps) => {
+  const fullDayId = useId();
 
-    {rows.length === 0 && <p className={styles.closed}>Closed</p>}
+  return (
+    <fieldset className={styles.day}>
+      <legend className={styles.dayName}>{name}</legend>
 
-    {rows.map((row, position) => (
-      <WindowFields
-        key={row.key}
-        label={`${name} window ${String(position + 1)}`}
-        row={row}
-        errors={errors.get(row.key)}
-        onChange={(change) => {
-          onChange(row.key, change);
-        }}
-        onRemove={() => {
-          onRemove(row.key);
-        }}
-      />
-    ))}
+      {rows.length === 0 && <p className={styles.closed}>Closed</p>}
 
-    <button
-      className={styles.secondary}
-      type="button"
-      aria-label={`Add a window on ${name}`}
-      title={canAdd ? undefined : 'The day already runs to 23:59'}
-      disabled={!canAdd}
-      onClick={onAdd}
-    >
-      Add window
-    </button>
-  </fieldset>
-);
+      {rows.map((row, position) => (
+        <WindowFields
+          key={row.key}
+          label={`${name} window ${String(position + 1)}`}
+          row={row}
+          errors={errors.get(row.key)}
+          onChange={(change) => {
+            onChange(row.key, change);
+          }}
+          onRemove={() => {
+            onRemove(row.key);
+          }}
+        />
+      ))}
+
+      <button
+        className={styles.secondary}
+        type="button"
+        aria-label={`Add a window on ${name}`}
+        aria-describedby={canAdd ? undefined : fullDayId}
+        disabled={!canAdd}
+        onClick={onAdd}
+      >
+        Add window
+      </button>
+
+      {!canAdd && (
+        <p className={styles.closed} id={fullDayId}>
+          The day already runs to 23:59.
+        </p>
+      )}
+    </fieldset>
+  );
+};
