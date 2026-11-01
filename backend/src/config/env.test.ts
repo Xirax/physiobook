@@ -46,7 +46,7 @@ describe('loadEnv', () => {
     const secret = 'short-but-secret';
 
     expect(() => loadEnv({ ...valid, JWT_SECRET: secret })).toThrow(
-      expect.not.stringContaining(secret) as unknown as string,
+      expect.objectContaining({ message: expect.not.stringContaining(secret) }) as unknown as Error,
     );
   });
 
@@ -275,7 +275,9 @@ describe('loadWorkerEnv', () => {
       const secret = 'smtp-secret-value';
 
       expect(() => loadWorkerEnv({ ...valid, MAIL_HOST: '', MAIL_PASSWORD: secret })).toThrow(
-        expect.not.stringContaining(secret) as unknown as string,
+        expect.objectContaining({
+          message: expect.not.stringContaining(secret),
+        }) as unknown as Error,
       );
     });
   });
