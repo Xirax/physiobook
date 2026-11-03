@@ -140,11 +140,12 @@ backend/
 │   │   │   ├── auth.logout.test.ts   # POST /auth/logout (incl. the instant-kill proof)
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
-│   │   │   ├── appointments.routes.ts       # POST /appointments (user)
-│   │   │   ├── appointments.service.ts      # isSlotBookable → 422, then block + appointment in one transaction; EXCLUDE → 409 SLOT_TAKEN
-│   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback
+│   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user)
+│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block + appointment in one transaction; EXCLUDE → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422
+│   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback; cancel cutoff boundary, ownership, statuses, race
 │   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
-│   │   │   └── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
+│   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
+│   │   │   └── appointments.cancel.test.ts  # inject() DELETE: 200 (slot back in GET /slots, re-bookable)/422/403/404/409/400/401, admin → 403
 │   │   ├── availability/     # admin business hours + time off
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction

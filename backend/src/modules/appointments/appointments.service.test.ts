@@ -4,12 +4,19 @@ import { appointments, calendarBlocks, users, type Database } from '@physiobook/
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { SlotNotBookableError, SlotTakenError } from '../../lib/errors.js';
+import {
+  AlreadyCancelledError,
+  CancellationCutoffPassedError,
+  ForbiddenError,
+  NotFoundError,
+  SlotNotBookableError,
+  SlotTakenError,
+} from '../../lib/errors.js';
 import { createTestDatabase, type TestDatabase } from '../../../tests/helpers/test-db.js';
 import { replaceBusinessHours } from '../availability/business-hours.service.js';
 import { updateSettings } from '../settings/settings.service.js';
 
-import { bookAppointment } from './appointments.service.js';
+import { bookAppointment, cancelAppointment } from './appointments.service.js';
 
 // A Sunday; 2026-11-02 is the Monday after, on CET (UTC+1), so the 09:00-13:00
 // Warsaw window is 08:00-12:00Z.
@@ -24,11 +31,12 @@ describe('appointments service', () => {
   let practitionerId: string;
   let patientId: string;
 
-  const setTimezone = (timezone: string) =>
+  const setSettings = ({ timezone = 'Europe/Warsaw', cutoffHours = 24 } = {}) =>
     updateSettings(
-      { timezone, reminder_lead_hours: 24, cancellation_cutoff_hours: 24 },
+      { timezone, reminder_lead_hours: 24, cancellation_cutoff_hours: cutoffHours },
       { db: database.db },
     );
+  const setTimezone = (timezone: string) => setSettings({ timezone });
 
   const book = (start: string, { user = patientId, now = NOW, db = database.db } = {}) =>
     bookAppointment(user, { start }, { db, now: () => now });
@@ -221,5 +229,158 @@ describe('appointments service', () => {
     await expect(book(at('10:00'), { db: withEmptyInsertInto(table) })).rejects.toThrow(message);
 
     expect(await countOf('calendar_blocks')).toBe(0);
+  });
+
+  describe('cancelAppointment', () => {
+    const START = at('10:00');
+    const hoursBeforeStart = (hours: number) => new Date(Date.parse(START) - hours * 3_600_000);
+
+    let otherPatientId: string;
+
+    const cancel = (
+      id: string,
+      { user = patientId, now = hoursBeforeStart(25) }: { user?: string; now?: Date } = {},
+    ) => cancelAppointment(user, id, { db: database.db, now: () => now });
+
+    const blockStatusOf = async (appointmentId: string) => {
+      const { rows } = await database.pool.query<{ status: string }>(
+        `SELECT b.status FROM appointments a JOIN calendar_blocks b ON b.id = a.block_id
+          WHERE a.id = $1`,
+        [appointmentId],
+      );
+      return rows[0]!.status;
+    };
+
+    const setBlockStatus = (appointmentId: string, status: 'cancelled' | 'cancelled_by_admin') =>
+      database.pool.query(
+        `UPDATE calendar_blocks SET status = $2
+          WHERE id = (SELECT block_id FROM appointments WHERE id = $1)`,
+        [appointmentId, status],
+      );
+
+    beforeAll(async () => {
+      const [other] = await database.db
+        .insert(users)
+        .values({ email: 'otto@example.com', passwordHash: 'not-a-real-hash', fullName: 'Otto' })
+        .returning({ id: users.id });
+      otherPatientId = other!.id;
+    });
+
+    it('Cancels an own appointment beyond the cutoff and returns it as cancelled', async () => {
+      const { id } = await book(START);
+
+      await expect(cancel(id)).resolves.toEqual({
+        id,
+        start: START,
+        end: at('11:00'),
+        status: 'cancelled',
+      });
+      expect(await blockStatusOf(id)).toBe('cancelled');
+    });
+
+    it('Frees the slot so it can be booked again', async () => {
+      const { id } = await book(START);
+      await cancel(id);
+
+      await expect(book(START)).resolves.toMatchObject({ start: START, status: 'active' });
+    });
+
+    it('Allows a cancel at exactly the cutoff', async () => {
+      const { id } = await book(START);
+
+      await expect(cancel(id, { now: hoursBeforeStart(24) })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+    });
+
+    it.each([
+      ['a millisecond inside the cutoff', hoursBeforeStart(24 - 1 / 3_600_000)],
+      ['23h before the start', hoursBeforeStart(23)],
+      ['after the start', hoursBeforeStart(-2)],
+    ])('Rejects a cancel %s and leaves the block active', async (_, now) => {
+      const { id } = await book(START);
+
+      await expect(cancel(id, { now })).rejects.toBeInstanceOf(CancellationCutoffPassedError);
+      expect(await blockStatusOf(id)).toBe('active');
+    });
+
+    it('Reads the cutoff from practice settings', async () => {
+      const { id } = await book(START);
+      await setSettings({ cutoffHours: 48 });
+
+      await expect(cancel(id, { now: hoursBeforeStart(25) })).rejects.toBeInstanceOf(
+        CancellationCutoffPassedError,
+      );
+      await expect(cancel(id, { now: hoursBeforeStart(48) })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+    });
+
+    it('Allows a cancel up to the start itself when the cutoff is zero', async () => {
+      const { id } = await book(START);
+      await setSettings({ cutoffHours: 0 });
+
+      await expect(cancel(id, { now: hoursBeforeStart(-1) })).rejects.toBeInstanceOf(
+        CancellationCutoffPassedError,
+      );
+      await expect(cancel(id, { now: hoursBeforeStart(0) })).resolves.toMatchObject({
+        status: 'cancelled',
+      });
+    });
+
+    it("Forbids cancelling another user's appointment and leaves it active", async () => {
+      const { id } = await book(START);
+
+      await expect(cancel(id, { user: otherPatientId })).rejects.toBeInstanceOf(ForbiddenError);
+      expect(await blockStatusOf(id)).toBe('active');
+    });
+
+    it("Forbids rather than reports the state of another user's cancelled appointment", async () => {
+      const { id } = await book(START);
+      await cancel(id);
+
+      await expect(cancel(id, { user: otherPatientId })).rejects.toBeInstanceOf(ForbiddenError);
+    });
+
+    it('Answers NotFoundError for an id that does not exist', async () => {
+      await expect(cancel(randomUUID())).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it('Answers NotFoundError for the id of a time-off block', async () => {
+      await insertBlock(at('09:00'), at('10:00'), { kind: 'time_off' });
+      const { rows } = await database.pool.query<{ id: string }>('SELECT id FROM calendar_blocks');
+
+      await expect(cancel(rows[0]!.id)).rejects.toBeInstanceOf(NotFoundError);
+    });
+
+    it.each(['cancelled', 'cancelled_by_admin'] as const)(
+      'Rejects cancelling a %s appointment with AlreadyCancelledError',
+      async (status) => {
+        const { id } = await book(START);
+        await setBlockStatus(id, status);
+
+        await expect(cancel(id)).rejects.toBeInstanceOf(AlreadyCancelledError);
+        expect(await blockStatusOf(id)).toBe(status);
+      },
+    );
+
+    it("Leaves the same user's other appointments untouched", async () => {
+      const { id } = await book(START);
+      const { id: otherId } = await book(at('11:00'));
+
+      await cancel(id);
+
+      expect(await blockStatusOf(otherId)).toBe('active');
+    });
+
+    it('Lets exactly one of two concurrent cancels succeed', async () => {
+      const { id } = await book(START);
+
+      const results = await Promise.allSettled([cancel(id), cancel(id)]);
+
+      expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+      const [rejected] = results.filter((result) => result.status === 'rejected');
+      expect(rejected?.reason).toBeInstanceOf(AlreadyCancelledError);
+    });
   });
 });
