@@ -1,8 +1,13 @@
 import { appointments, calendarBlocks, type Database } from '@physiobook/db';
 import type { Appointment, BookAppointmentRequest } from '@physiobook/shared';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import {
+  AlreadyCancelledError,
+  CancellationCutoffPassedError,
+  ForbiddenError,
   isPostgresError,
+  NotFoundError,
   PG_EXCLUSION_VIOLATION,
   SlotNotBookableError,
   SlotTakenError,
@@ -18,7 +23,8 @@ export interface AppointmentsDependencies {
   now: () => Date;
 }
 
-const SLOT_MS = 3_600_000;
+const HOUR_MS = 3_600_000;
+const SLOT_MS = HOUR_MS;
 
 async function assertBookable(db: Database, start: Date, now: Date): Promise<void> {
   const [{ timezone }, { windows }] = await Promise.all([
@@ -81,4 +87,62 @@ export async function bookAppointment(
 
     throw error;
   }
+}
+
+async function explainMissedCancel(
+  db: Database,
+  userId: string,
+  appointmentId: string,
+  cutoffHours: number,
+): Promise<never> {
+  const [appointment] = await db
+    .select({ userId: appointments.userId, status: calendarBlocks.status })
+    .from(appointments)
+    .innerJoin(calendarBlocks, eq(calendarBlocks.id, appointments.blockId))
+    .where(eq(appointments.id, appointmentId));
+
+  if (appointment === undefined) throw new NotFoundError('No such appointment');
+  if (appointment.userId !== userId) throw new ForbiddenError();
+  if (appointment.status !== 'active') {
+    throw new AlreadyCancelledError('That appointment is already cancelled');
+  }
+
+  throw new CancellationCutoffPassedError(cutoffHours);
+}
+
+export async function cancelAppointment(
+  userId: string,
+  appointmentId: string,
+  { db, now }: AppointmentsDependencies,
+): Promise<Appointment> {
+  const { cancellation_cutoff_hours: cutoffHours } = await getSettings({ db });
+  const earliestCancellableStart = new Date(now().getTime() + cutoffHours * HOUR_MS);
+
+  const ownBlock = db
+    .select({ id: appointments.blockId })
+    .from(appointments)
+    .where(and(eq(appointments.id, appointmentId), eq(appointments.userId, userId)));
+
+  // One conditional UPDATE, so two concurrent cancels cannot both succeed; the
+  // read in explainMissedCancel only classifies a miss.
+  const [block] = await db
+    .update(calendarBlocks)
+    .set({ status: 'cancelled' })
+    .where(
+      and(
+        inArray(calendarBlocks.id, ownBlock),
+        eq(calendarBlocks.status, 'active'),
+        sql`${periodStart} >= ${earliestCancellableStart.toISOString()}::timestamptz`,
+      ),
+    )
+    .returning({ start: periodStart, end: periodEnd, status: calendarBlocks.status });
+
+  if (block === undefined) return explainMissedCancel(db, userId, appointmentId, cutoffHours);
+
+  return {
+    id: appointmentId,
+    start: block.start.toISOString(),
+    end: block.end.toISOString(),
+    status: block.status,
+  };
 }
