@@ -103,7 +103,6 @@ export function isDomainError(error: unknown): error is DomainError {
 }
 
 export const PG_UNIQUE_VIOLATION = '23505';
-export const PG_EXCLUSION_VIOLATION = '23P01';
 
 export function findDatabaseError(
   error: unknown,

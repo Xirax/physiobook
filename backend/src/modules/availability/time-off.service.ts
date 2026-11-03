@@ -4,9 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import {
   AlreadyCancelledError,
-  isPostgresError,
   NotFoundError,
-  PG_EXCLUSION_VIOLATION,
   TimeOffConflictError,
   TimeOffInPastError,
 } from '../../lib/errors.js';
@@ -51,7 +49,7 @@ async function insertTimeOff(
   db: Database,
   practitionerId: string,
   input: CreateTimeOffRequest,
-): Promise<TimeOff> {
+): Promise<TimeOff | undefined> {
   const [row] = await db
     .insert(calendarBlocks)
     .values({
@@ -60,6 +58,7 @@ async function insertTimeOff(
       period: tstzrangeOf(input),
       note: input.note ?? null,
     })
+    .onConflictDoNothing()
     .returning({
       id: calendarBlocks.id,
       start: periodStart,
@@ -67,7 +66,7 @@ async function insertTimeOff(
       note: calendarBlocks.note,
     });
 
-  if (row === undefined) throw new Error('time-off insert returned no row');
+  if (row === undefined) return undefined;
 
   return {
     id: row.id,
@@ -86,21 +85,19 @@ export async function createTimeOff(
 ): Promise<TimeOff> {
   if (Date.parse(input.end) <= now().getTime()) throw new TimeOffInPastError();
 
+  // ON CONFLICT DO NOTHING is load-bearing, not style: plain INSERTs racing on
+  // the EXCLUDE constraint can deadlock (40P01) and answer 500; speculative
+  // insertion cannot. Ticket 3.3's race tests prove it.
   for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await insertTimeOff(db, practitionerId, input);
-    } catch (error) {
-      if (!isPostgresError(error, PG_EXCLUSION_VIOLATION, 'calendar_blocks_no_overlap')) {
-        throw error;
-      }
+    const created = await insertTimeOff(db, practitionerId, input);
+    if (created !== undefined) return created;
 
-      // The constraint has already decided; this read only names the winners.
-      // An empty list means every blocker was cancelled in between, so the
-      // range may be free now: retry once rather than answer a 409 naming nothing.
-      const conflicts = await findConflicts(db, practitionerId, input);
-      if (conflicts.length > 0 || attempt === INSERT_ATTEMPTS) {
-        throw new TimeOffConflictError(conflicts);
-      }
+    // The constraint has already decided; this read only names the winners.
+    // An empty list means every blocker was cancelled in between, so the
+    // range may be free now: retry once rather than answer a 409 naming nothing.
+    const conflicts = await findConflicts(db, practitionerId, input);
+    if (conflicts.length > 0 || attempt === INSERT_ATTEMPTS) {
+      throw new TimeOffConflictError(conflicts);
     }
   }
 }
