@@ -24,6 +24,7 @@ export interface RateLimitOptions {
 export interface BuildServerOptions {
   logger?: boolean;
   databaseUrl: string;
+  databasePoolMax?: number;
   jwtSecret: string;
   jwtTtlSeconds: number;
   refreshTtlSeconds: number;
@@ -43,7 +44,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   app.setSerializerCompiler(serializerCompiler);
 
   await app.register(errorHandlerPlugin);
-  await app.register(databasePlugin, { connectionString: options.databaseUrl });
+  await app.register(databasePlugin, {
+    connectionString: options.databaseUrl,
+    ...(options.databasePoolMax === undefined ? {} : { poolMax: options.databasePoolMax }),
+  });
   await app.register(jobsPlugin, { connectionString: options.databaseUrl });
   await app.register(cookiePlugin, { secure: options.secureCookies });
   await app.register(rateLimitPlugin, options.rateLimit);

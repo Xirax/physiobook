@@ -10,6 +10,7 @@ const TEST_RATE_LIMIT_MAX = 10_000;
 
 export interface TestAppOptions {
   databaseUrl: string;
+  databasePoolMax?: number;
   now?: () => Date;
   jwtTtlSeconds?: number;
   refreshTtlSeconds?: number;
@@ -22,6 +23,7 @@ export interface TestAppOptions {
 
 export function buildTestApp({
   databaseUrl,
+  databasePoolMax,
   now,
   jwtTtlSeconds = TEST_JWT_TTL_SECONDS,
   refreshTtlSeconds = TEST_REFRESH_TTL_SECONDS,
@@ -45,6 +47,7 @@ export function buildTestApp({
     },
     trustProxy,
     logger: false,
+    ...(databasePoolMax === undefined ? {} : { databasePoolMax }),
     ...(now === undefined ? {} : { now }),
   });
 }
