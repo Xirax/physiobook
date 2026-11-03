@@ -141,7 +141,7 @@ backend/
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
 │   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user)
-│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block + appointment in one transaction; EXCLUDE → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422
+│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422
 │   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback; cancel cutoff boundary, ownership, statuses, race
 │   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
 │   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
@@ -158,7 +158,7 @@ backend/
 │   │   │   ├── slots.service.test.ts      # Testcontainers: block kinds/statuses, practitioner scope, clock
 │   │   │   ├── slots.routes.ts            # GET /slots (any auth)
 │   │   │   ├── slots.test.ts              # inject(): range cap, validation, auth
-│   │   │   ├── time-off.service.ts        # create (EXCLUDE decides, 409 lists conflicts) / cancel (one conditional UPDATE)
+│   │   │   ├── time-off.service.ts        # create (ON CONFLICT DO NOTHING, 409 lists conflicts) / cancel (one conditional UPDATE)
 │   │   │   ├── time-off.service.test.ts   # Testcontainers: overlap kinds, statuses, scope, clock, create + cancel races
 │   │   │   ├── time-off.routes.ts         # POST /time-off, DELETE /time-off/:id (admin)
 │   │   │   └── time-off.test.ts           # inject(): 201/409/422/400/403/401, 204/404/409/422, slots hidden and freed
@@ -197,7 +197,8 @@ backend/
 │   │   ├── mailpit-harness.test.ts      # the inbox helper finds mail by recipient, and only that
 │   │   └── mailer.test.ts               # templated mail over SMTP lands in Mailpit; unreachable SMTP rejects
 │   └── race/
-│       └── concurrent-booking.test.ts   # the headline race test
+│       ├── concurrent-booking.test.ts   # the headline race test (3.3): 20 patients / one patient ×20 → one booking, 10×
+│       └── concurrent-time-off.test.ts  # time off ×20, and time off vs 20 bookings → one block, never a 500
 ├── vitest.config.ts          # what to run; coverage/gate come from the root config
 ├── tsconfig.json             # extends ../tsconfig.base.json
 └── package.json

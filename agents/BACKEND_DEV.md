@@ -32,7 +32,7 @@ Cross-cutting concerns are **Fastify plugins** (`src/plugins/`): `auth` (JWT ver
 - Import the schema and client from the **`db/` package** — never redefine tables in `backend/`.
 - **Correctness lives in the database.** The `EXCLUDE` no-overlap constraint on `calendar_blocks` is the source of truth for "slot is free". Do **not** implement `SELECT ... then INSERT if free` — it is a race and will be rejected in review.
 - **Booking is a single transaction:** insert the `calendar_blocks` row and the `appointments` row together; let the DB constraint decide the winner.
-- **Translate DB constraint violations into clean domain errors.** Catch the unique/exclusion violation (Postgres `23P01`/`23505`) and return a `409 slot taken` — never leak a raw driver error to the client.
+- **Translate DB constraint violations into clean domain errors** — never leak a raw driver error to the client. For `calendar_blocks`, insert with `ON CONFLICT DO NOTHING` and treat "no row returned" as `409`: a plain `INSERT` that catches `23P01` **deadlocks** under concurrency (`40P01` → 500, found by the 3.3 race test). Elsewhere, catch the unique violation (`23505`) by constraint name.
 - Use transactions for any multi-write operation. Keep them short.
 - Schema changes go through **Drizzle migrations** in `db/`. The `tstzrange` / `btree_gist` / `EXCLUDE` bits are hand-written SQL migrations — never edit an already-applied migration; add a new one.
 
