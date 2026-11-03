@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { appointments, calendarBlocks, users, type Database } from '@physiobook/db';
+import { appointments, users, type Database } from '@physiobook/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -67,9 +67,9 @@ describe('appointments service', () => {
     return rows[0]!.count;
   };
 
-  // The real client, except that inside a transaction an insert into `table`
-  // returns no row; every other query reaches Postgres untouched.
-  const withEmptyInsertInto = (table: typeof calendarBlocks | typeof appointments): Database =>
+  // The real client, except that inside a transaction an insert into
+  // `appointments` returns no row; every other query reaches Postgres untouched.
+  const withEmptyAppointmentInsert = (): Database =>
     new Proxy(database.db, {
       get(target, property, receiver) {
         if (property !== 'transaction') return Reflect.get(target, property, receiver);
@@ -82,9 +82,9 @@ describe('appointments service', () => {
                   if (txProperty !== 'insert') return Reflect.get(txTarget, txProperty, txReceiver);
 
                   return (into: unknown) =>
-                    into === table
+                    into === appointments
                       ? { values: () => ({ returning: () => Promise.resolve([]) }) }
-                      : txTarget.insert(into as typeof table);
+                      : txTarget.insert(into as typeof appointments);
                 },
               }),
             ),
@@ -222,11 +222,10 @@ describe('appointments service', () => {
     expect(await countOf('calendar_blocks')).toBe(0);
   });
 
-  it.each([
-    ['calendar block', calendarBlocks, 'calendar block insert returned no row'],
-    ['appointment', appointments, 'appointment insert returned no row'],
-  ] as const)('Fails loudly when the %s insert returns no row', async (_, table, message) => {
-    await expect(book(at('10:00'), { db: withEmptyInsertInto(table) })).rejects.toThrow(message);
+  it('Fails loudly when the appointment insert returns no row, rolling the block back', async () => {
+    await expect(book(at('10:00'), { db: withEmptyAppointmentInsert() })).rejects.toThrow(
+      'appointment insert returned no row',
+    );
 
     expect(await countOf('calendar_blocks')).toBe(0);
   });

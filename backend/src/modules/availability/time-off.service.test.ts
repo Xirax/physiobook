@@ -42,7 +42,7 @@ describe('time-off service', () => {
         const outcome = pending.shift();
         if (outcome === undefined) return Reflect.get(target, property, receiver);
 
-        return () => ({ values: () => ({ returning: outcome }) });
+        return () => ({ values: () => ({ onConflictDoNothing: () => ({ returning: outcome }) }) });
       },
     });
     return { db, counts };
@@ -59,7 +59,7 @@ describe('time-off service', () => {
     () =>
       Promise.reject(error);
 
-  const overlapViolation = () => rejectWith(databaseError('23P01', 'calendar_blocks_no_overlap'));
+  const skippedAsConflict: InsertOutcome = () => Promise.resolve([]);
 
   const cancel = (id: string, now = NOW, practitioner = practitionerId) =>
     cancelTimeOff(practitioner, id, { db: database.db, now: () => now });
@@ -235,7 +235,7 @@ describe('time-off service', () => {
 
   describe('when the blockers vanish before the conflict read', () => {
     it('Retries once and books the range', async () => {
-      const { db, counts } = withFakedInserts(overlapViolation());
+      const { db, counts } = withFakedInserts(skippedAsConflict);
 
       const created = await createWith(db, at('09:00'), at('12:00'));
 
@@ -244,7 +244,7 @@ describe('time-off service', () => {
     });
 
     it('Gives up after the retry with a conflict naming nothing', async () => {
-      const { db, counts } = withFakedInserts(overlapViolation(), overlapViolation());
+      const { db, counts } = withFakedInserts(skippedAsConflict, skippedAsConflict);
 
       expect(await conflictsOf(createWith(db, at('09:00'), at('12:00')))).toEqual([]);
       expect(counts.inserts).toBe(2);
@@ -266,24 +266,12 @@ describe('time-off service', () => {
         'a different Postgres error',
         databaseError('23503', 'calendar_blocks_practitioner_id_fkey'),
       ],
-      [
-        'an exclusion violation of another constraint',
-        databaseError('23P01', 'some_other_exclusion'),
-      ],
       ['a non-database error', new Error('connection reset')],
     ])('Rethrows %s untouched, without reading conflicts or retrying', async (_, error) => {
       const { db, counts } = withFakedInserts(rejectWith(error));
 
       await expect(createWith(db, at('09:00'), at('12:00'))).rejects.toBe(error);
       expect(counts.inserts).toBe(1);
-    });
-
-    it('Fails loudly if the insert returns no row', async () => {
-      const { db } = withFakedInserts(() => Promise.resolve([]));
-
-      await expect(createWith(db, at('09:00'), at('12:00'))).rejects.toThrow(
-        'time-off insert returned no row',
-      );
     });
   });
 

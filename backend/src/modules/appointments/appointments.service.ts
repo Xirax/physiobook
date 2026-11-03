@@ -6,9 +6,7 @@ import {
   AlreadyCancelledError,
   CancellationCutoffPassedError,
   ForbiddenError,
-  isPostgresError,
   NotFoundError,
-  PG_EXCLUSION_VIOLATION,
   SlotNotBookableError,
   SlotTakenError,
 } from '../../lib/errors.js';
@@ -47,46 +45,41 @@ export async function bookAppointment(
   const practitionerId = await findPractitionerId(db);
 
   // Freeness is deliberately not checked above: the EXCLUDE constraint decides
-  // the winner of a race, and the transaction leaves no block behind a failure.
-  try {
-    return await db.transaction(async (tx) => {
-      const [block] = await tx
-        .insert(calendarBlocks)
-        .values({
-          practitionerId,
-          kind: 'appointment',
-          period: tstzrangeOf({ start, end }),
-        })
-        .returning({
-          id: calendarBlocks.id,
-          start: periodStart,
-          end: periodEnd,
-          status: calendarBlocks.status,
-        });
+  // the winner of a race. ON CONFLICT DO NOTHING is load-bearing, not style: a
+  // plain INSERT racing others on an exclusion constraint can deadlock (40P01),
+  // whereas speculative insertion cannot - ticket 3.3's race test proves it.
+  return db.transaction(async (tx) => {
+    const [block] = await tx
+      .insert(calendarBlocks)
+      .values({
+        practitionerId,
+        kind: 'appointment',
+        period: tstzrangeOf({ start, end }),
+      })
+      .onConflictDoNothing()
+      .returning({
+        id: calendarBlocks.id,
+        start: periodStart,
+        end: periodEnd,
+        status: calendarBlocks.status,
+      });
 
-      if (block === undefined) throw new Error('calendar block insert returned no row');
+    if (block === undefined) throw new SlotTakenError();
 
-      const [appointment] = await tx
-        .insert(appointments)
-        .values({ blockId: block.id, userId })
-        .returning({ id: appointments.id });
+    const [appointment] = await tx
+      .insert(appointments)
+      .values({ blockId: block.id, userId })
+      .returning({ id: appointments.id });
 
-      if (appointment === undefined) throw new Error('appointment insert returned no row');
+    if (appointment === undefined) throw new Error('appointment insert returned no row');
 
-      return {
-        id: appointment.id,
-        start: block.start.toISOString(),
-        end: block.end.toISOString(),
-        status: block.status,
-      };
-    });
-  } catch (error) {
-    if (isPostgresError(error, PG_EXCLUSION_VIOLATION, 'calendar_blocks_no_overlap')) {
-      throw new SlotTakenError();
-    }
-
-    throw error;
-  }
+    return {
+      id: appointment.id,
+      start: block.start.toISOString(),
+      end: block.end.toISOString(),
+      status: block.status,
+    };
+  });
 }
 
 async function explainMissedCancel(

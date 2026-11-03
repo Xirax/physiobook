@@ -58,7 +58,7 @@ Any one of these blocks the merge outright:
 
 - [ ] Route handlers contain **no business logic** — validate, authorise, delegate, respond. Logic is in services.
 - [ ] Booking is a **single transaction** (block + appointment); the DB constraint decides the winner.
-- [ ] Constraint violations (`23P01`/`23505`) are caught and mapped to `409 SLOT_TAKEN` — no raw errors surfaced.
+- [ ] Conflicts map to clean `409`s — no raw errors surfaced. `calendar_blocks` writes use `ON CONFLICT DO NOTHING` (no row → 409); a plain `INSERT` catching `23P01` can deadlock and is a **blocker**. Unique violations (`23505`) are caught by constraint name.
 - [ ] **Concurrency test** for anything touching the ledger; ticket-3.3 race test still green.
 - [ ] **Ownership enforced** server-side — a `user` can only touch their own resources; admin routes guarded.
 - [ ] **Jobs are idempotent** — `notification_log.dedupe_key` prevents double-send; retries assumed.

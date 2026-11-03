@@ -10,13 +10,17 @@ declare module 'fastify' {
 
 export interface DatabasePluginOptions {
   connectionString: string;
+  poolMax?: number;
 }
 
 async function databasePlugin(
   app: FastifyInstance,
-  { connectionString }: DatabasePluginOptions,
+  { connectionString, poolMax }: DatabasePluginOptions,
 ): Promise<void> {
-  const { db, close } = createDatabase(connectionString);
+  const { db, close } = createDatabase(
+    connectionString,
+    poolMax === undefined ? {} : { max: poolMax },
+  );
 
   app.decorate('db', db);
 

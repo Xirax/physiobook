@@ -144,6 +144,28 @@ describe('calendar_blocks and appointments', () => {
     });
   });
 
+  describe('ON CONFLICT arbiters', () => {
+    // Booking and time off insert with a targetless ON CONFLICT DO NOTHING and
+    // read "no row" as an overlap (SCHEMA.md 2.5). A new unique or exclusion
+    // index here would be absorbed the same way and come back as SLOT_TAKEN /
+    // TIME_OFF_CONFLICT, so adding one must revisit that decision first.
+    it('Has only the primary key and the no-overlap EXCLUDE as unique or exclusion indexes', async () => {
+      const { rows } = await database.pool.query<{ name: string }>(
+        `SELECT index_class.relname AS name
+           FROM pg_index
+           JOIN pg_class index_class ON index_class.oid = pg_index.indexrelid
+          WHERE pg_index.indrelid = 'calendar_blocks'::regclass
+            AND (pg_index.indisunique OR pg_index.indisexclusion)
+          ORDER BY name`,
+      );
+
+      expect(rows.map(({ name }) => name)).toEqual([
+        'calendar_blocks_no_overlap',
+        'calendar_blocks_pkey',
+      ]);
+    });
+  });
+
   describe('period shape', () => {
     it.each([
       ['off the hour (10:30)', at('10:30'), at('11:30')],
