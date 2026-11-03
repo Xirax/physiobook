@@ -88,6 +88,16 @@ export class SlotNotBookableError extends DomainError {
   }
 }
 
+export class CancellationCutoffPassedError extends DomainError {
+  constructor(cutoffHours: number) {
+    super(
+      errorCodes.CANCELLATION_CUTOFF_PASSED,
+      422,
+      `Appointments can only be cancelled at least ${cutoffHours}h in advance`,
+    );
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }

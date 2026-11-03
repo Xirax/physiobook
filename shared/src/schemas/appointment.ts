@@ -4,6 +4,10 @@ export const bookAppointmentRequestSchema = z.strictObject({
   start: z.iso.datetime({ message: 'Enter a UTC timestamp, e.g. 2026-11-02T09:00:00Z' }),
 });
 
+export const appointmentParamsSchema = z.strictObject({
+  id: z.uuid({ message: 'Enter a valid appointment id' }),
+});
+
 export const appointmentStatusSchema = z.enum(['active', 'cancelled', 'cancelled_by_admin']);
 
 export const appointmentSchema = z.strictObject({
