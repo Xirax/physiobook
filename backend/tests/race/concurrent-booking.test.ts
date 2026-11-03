@@ -2,8 +2,8 @@ import { errorCodes } from '@physiobook/shared';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { buildTestApp } from '../../../tests/helpers/test-app.js';
-import { createTestDatabase, type TestDatabase } from '../../../tests/helpers/test-db.js';
+import { buildTestApp } from '../helpers/test-app.js';
+import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
 // A Sunday; the Monday after is on CET (UTC+1), so 09:00 Warsaw is 08:00Z.
 const NOW = new Date('2026-11-01T12:00:00Z');
