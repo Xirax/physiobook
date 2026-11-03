@@ -145,4 +145,26 @@ describe('Concurrent booking race for one slot', () => {
       },
     );
   });
+
+  describe('One patient double-submitting', () => {
+    it.each(ITERATIONS)(
+      `Iteration %i: ${String(N)} identical requests from one patient book exactly once`,
+      async () => {
+        const [patient] = patients;
+        const responses = await Promise.all(Array.from({ length: N }, () => book(patient!.token)));
+
+        expect(statusCounts(responses)).toEqual({ 201: 1, 409: N - 1 });
+
+        const winner = responses.find(({ statusCode }) => statusCode === 201)!;
+        expect(await ledger()).toEqual([
+          {
+            block_id: expect.any(String),
+            status: 'active',
+            appointment_id: winner.json().id,
+            user_id: patient!.id,
+          },
+        ]);
+      },
+    );
+  });
 });
