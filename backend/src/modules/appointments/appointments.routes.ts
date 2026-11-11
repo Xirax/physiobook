@@ -10,7 +10,11 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { authenticatedUser } from '../../plugins/auth.js';
 import { rateLimitedPerUserRoute } from '../../plugins/rate-limit.js';
 
-import { bookAppointment, cancelAppointment } from './appointments.service.js';
+import {
+  adminCancelAppointment,
+  bookAppointment,
+  cancelAppointment,
+} from './appointments.service.js';
 
 export interface AppointmentsRoutesOptions {
   bookingRateLimitMax: number;
@@ -72,6 +76,33 @@ export async function appointmentsRoutes(
       const { id: userId } = authenticatedUser(request);
 
       return cancelAppointment(userId, request.params.id, dependencies);
+    },
+  );
+
+  typed.post(
+    '/admin/appointments/:id/cancel',
+    {
+      onRequest: app.requireRole('admin'),
+      schema: {
+        params: appointmentParamsSchema,
+        response: {
+          200: appointmentSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+          404: errorResponseSchema,
+          409: errorResponseSchema,
+          422: errorResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { id: practitionerId } = authenticatedUser(request);
+
+      return adminCancelAppointment(practitionerId, request.params.id, {
+        ...dependencies,
+        jobs: app.jobs,
+      });
     },
   );
 }
