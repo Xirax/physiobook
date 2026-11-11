@@ -1,13 +1,8 @@
 import { z } from 'zod';
 
+import { inclusiveDays } from './date-range.js';
+
 export const SLOT_RANGE_MAX_DAYS = 62;
-
-const MS_PER_DAY = 86_400_000;
-
-// Calendar dates parse as UTC midnight, so the difference is a whole number of
-// days whatever the practice timezone — the range is counted in dates, not hours.
-const inclusiveDays = (from: string, to: string): number =>
-  (Date.parse(to) - Date.parse(from)) / MS_PER_DAY + 1;
 
 export const slotsQuerySchema = z
   .strictObject({

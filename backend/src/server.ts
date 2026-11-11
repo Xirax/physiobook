@@ -6,6 +6,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { businessHoursRoutes } from './modules/availability/business-hours.routes.js';
 import { slotsRoutes } from './modules/availability/slots.routes.js';
 import { timeOffRoutes } from './modules/availability/time-off.routes.js';
+import { dashboardRoutes } from './modules/dashboard/dashboard.routes.js';
 import { settingsRoutes } from './modules/settings/settings.routes.js';
 import authPlugin from './plugins/auth.js';
 import cookiePlugin from './plugins/cookie.js';
@@ -70,6 +71,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   await app.register(businessHoursRoutes);
   await app.register(slotsRoutes, options.now === undefined ? {} : { now: options.now });
   await app.register(timeOffRoutes, options.now === undefined ? {} : { now: options.now });
+  await app.register(dashboardRoutes);
   await app.register(appointmentsRoutes, {
     bookingRateLimitMax: options.rateLimit.bookingMax,
     ...(options.now === undefined ? {} : { now: options.now }),
