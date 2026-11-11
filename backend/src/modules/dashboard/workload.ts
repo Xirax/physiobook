@@ -28,7 +28,9 @@ function datesBetween(from: string, to: string): string[] {
 }
 
 const periodOf = (date: string, granularity: WorkloadGranularity): string =>
-  granularity === 'day' ? date : DateTime.fromISO(date).startOf('week').toISODate()!;
+  granularity === 'day'
+    ? date
+    : DateTime.fromISO(date, { zone: 'utc' }).startOf('week').toISODate()!;
 
 /**
  * Capacity is the business-hours grid minus time-off, past included; open is
