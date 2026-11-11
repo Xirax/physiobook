@@ -3,11 +3,13 @@ import type { PgBoss, WorkHandler } from 'pg-boss';
 
 import { createBoss, type QueueName, startBoss } from './boss.js';
 import { noopHandler } from './noop.job.js';
+import { sendCancellationHandler } from './send-cancellation.job.js';
 
 export type JobHandlers = Record<QueueName, WorkHandler<unknown>>;
 
 export const defaultHandlers: JobHandlers = {
   noop: noopHandler,
+  'send-cancellation': sendCancellationHandler,
 };
 
 /**
