@@ -1,10 +1,10 @@
 import { appointments, calendarBlocks, type Database } from '@physiobook/db';
 import type { Appointment, BookAppointmentRequest } from '@physiobook/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { fromDrizzle } from 'pg-boss';
 
 import { type JobQueue, QUEUES } from '../../jobs/boss.js';
 import type { SendCancellationPayload } from '../../jobs/send-cancellation.job.js';
-import { transactionDb } from '../../jobs/transaction-db.js';
 import {
   AlreadyCancelledError,
   AppointmentAlreadyStartedError,
@@ -198,7 +198,7 @@ export async function adminCancelAppointment(
     if (cancelled === undefined) return undefined;
 
     const payload: SendCancellationPayload = { appointmentId };
-    await jobs.send(QUEUES.sendCancellation, payload, { db: transactionDb(tx) });
+    await jobs.send(QUEUES.sendCancellation, payload, { db: fromDrizzle(tx, sql) });
 
     return cancelled;
   });

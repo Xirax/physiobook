@@ -174,7 +174,6 @@ backend/
 │   │   ├── worker.ts         # startWorker(): handlers + tiny /health; runWorker(): signal → drain → exit code
 │   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
 │   │   ├── send-cancellation.job.ts # payload schema { appointmentId } + placeholder handler (4.4 sends the mail)
-│   │   ├── transaction-db.ts # pg-boss `send({ db })` adapter over a Drizzle transaction
 │   │   └── reminders.job.ts  # 24h reminder logic (incl. admin grouping)
 │   └── lib/
 │       ├── mailer.ts         # nodemailer SMTP transport (provider in prod, Mailpit in dev/test); rejects on failure so jobs retry
@@ -243,7 +242,7 @@ backend/
   - **`/health` is HTTP-level, not TCP.** It runs `SELECT 1` through pg-boss's own pool and answers 503 when that fails, which a port probe cannot see. Request logging is off on that server; the probe runs every 5 s.
   - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })` (the health server closes in a `finally`), and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first. `runWorker()` subscribes to SIGTERM/SIGINT **before** boot, so a stop requested mid-start still drains and exits 0 rather than Node's default 143.
   - **Handlers are injected** (`startWorker({ handlers })`), so tests can wrap the real handler and count invocations against a real Postgres.
-  - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: transactionDb(tx) })`: `jobs/transaction-db.ts` rewrites pg-boss's positional `$n` SQL into a Drizzle `sql` object and runs it on the transaction, so the job commits or rolls back with it. The admin hard-cancel uses it, so a cancel without its notification job cannot exist.
+  - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: fromDrizzle(tx, sql) })` — pg-boss's own Drizzle adapter, which runs the insert on the transaction, so the job commits or rolls back with it (`tests/jobs/transaction-db.test.ts` proves both). The admin hard-cancel uses it, so a cancel without its notification job cannot exist.
 
 ---
 

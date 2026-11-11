@@ -1,4 +1,5 @@
-import type { PgBoss } from 'pg-boss';
+import { sql } from 'drizzle-orm';
+import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -8,7 +9,6 @@ import {
   QUEUES,
   startBoss,
 } from '../../src/jobs/boss.js';
-import { transactionDb } from '../../src/jobs/transaction-db.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
 class Rollback extends Error {}
@@ -41,7 +41,7 @@ describe('enqueueing inside a Drizzle transaction', () => {
 
   it('creates the job when the transaction commits', async () => {
     const id = await database.db.transaction((tx) =>
-      jobs.send(QUEUES.noop, { probe: 'commit' }, { db: transactionDb(tx) }),
+      jobs.send(QUEUES.noop, { probe: 'commit' }, { db: fromDrizzle(tx, sql) }),
     );
 
     expect(await findJob(id ?? '')).toMatchObject({ state: 'created', data: { probe: 'commit' } });
@@ -52,7 +52,7 @@ describe('enqueueing inside a Drizzle transaction', () => {
 
     await expect(
       database.db.transaction(async (tx) => {
-        id = await jobs.send(QUEUES.noop, { probe: 'rollback' }, { db: transactionDb(tx) });
+        id = await jobs.send(QUEUES.noop, { probe: 'rollback' }, { db: fromDrizzle(tx, sql) });
         throw new Rollback();
       }),
     ).rejects.toBeInstanceOf(Rollback);
