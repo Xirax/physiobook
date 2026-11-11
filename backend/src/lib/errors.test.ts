@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AlreadyCancelledError,
+  AppointmentAlreadyStartedError,
   CancellationCutoffPassedError,
   DomainError,
   EmailTakenError,
@@ -77,6 +78,7 @@ describe('Domain errors', () => {
     [new SlotTakenError(), 'SLOT_TAKEN', 409],
     [new SlotNotBookableError(), 'SLOT_NOT_BOOKABLE', 422],
     [new CancellationCutoffPassedError(24), 'CANCELLATION_CUTOFF_PASSED', 422],
+    [new AppointmentAlreadyStartedError(), 'APPOINTMENT_ALREADY_STARTED', 422],
   ])('Maps %s to its code and status', (error, code, status) => {
     expect(error.code).toBe(code);
     expect(error.statusCode).toBe(status);

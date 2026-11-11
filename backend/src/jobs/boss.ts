@@ -2,6 +2,7 @@ import { PgBoss, type SendOptions } from 'pg-boss';
 
 export const QUEUES = {
   noop: 'noop',
+  sendCancellation: 'send-cancellation',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

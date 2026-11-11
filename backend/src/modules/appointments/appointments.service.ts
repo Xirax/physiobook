@@ -1,9 +1,13 @@
 import { appointments, calendarBlocks, type Database } from '@physiobook/db';
 import type { Appointment, BookAppointmentRequest } from '@physiobook/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+import { fromDrizzle } from 'pg-boss';
 
+import { type JobQueue, QUEUES } from '../../jobs/boss.js';
+import type { SendCancellationPayload } from '../../jobs/send-cancellation.job.js';
 import {
   AlreadyCancelledError,
+  AppointmentAlreadyStartedError,
   CancellationCutoffPassedError,
   ForbiddenError,
   NotFoundError,
@@ -131,6 +135,75 @@ export async function cancelAppointment(
     .returning({ start: periodStart, end: periodEnd, status: calendarBlocks.status });
 
   if (block === undefined) return explainMissedCancel(db, userId, appointmentId, cutoffHours);
+
+  return {
+    id: appointmentId,
+    start: block.start.toISOString(),
+    end: block.end.toISOString(),
+    status: block.status,
+  };
+}
+
+export interface AdminCancelDependencies extends AppointmentsDependencies {
+  jobs: JobQueue;
+}
+
+async function explainMissedAdminCancel(
+  db: Database,
+  practitionerId: string,
+  appointmentId: string,
+): Promise<never> {
+  const [appointment] = await db
+    .select({ status: calendarBlocks.status })
+    .from(appointments)
+    .innerJoin(calendarBlocks, eq(calendarBlocks.id, appointments.blockId))
+    .where(
+      and(eq(appointments.id, appointmentId), eq(calendarBlocks.practitionerId, practitionerId)),
+    );
+
+  if (appointment === undefined) throw new NotFoundError('No such appointment');
+  if (appointment.status !== 'active') {
+    throw new AlreadyCancelledError('That appointment is already cancelled');
+  }
+
+  throw new AppointmentAlreadyStartedError();
+}
+
+export async function adminCancelAppointment(
+  practitionerId: string,
+  appointmentId: string,
+  { db, now, jobs }: AdminCancelDependencies,
+): Promise<Appointment> {
+  const appointmentBlock = db
+    .select({ id: appointments.blockId })
+    .from(appointments)
+    .where(eq(appointments.id, appointmentId));
+
+  // The enqueue shares the UPDATE's transaction: a cancel without its
+  // notification job, or a job for a cancel that rolled back, cannot exist.
+  const block = await db.transaction(async (tx) => {
+    const [cancelled] = await tx
+      .update(calendarBlocks)
+      .set({ status: 'cancelled_by_admin' })
+      .where(
+        and(
+          inArray(calendarBlocks.id, appointmentBlock),
+          eq(calendarBlocks.practitionerId, practitionerId),
+          eq(calendarBlocks.status, 'active'),
+          sql`${periodStart} > ${now().toISOString()}::timestamptz`,
+        ),
+      )
+      .returning({ start: periodStart, end: periodEnd, status: calendarBlocks.status });
+
+    if (cancelled === undefined) return undefined;
+
+    const payload: SendCancellationPayload = { appointmentId };
+    await jobs.send(QUEUES.sendCancellation, payload, { db: fromDrizzle(tx, sql) });
+
+    return cancelled;
+  });
+
+  if (block === undefined) return explainMissedAdminCancel(db, practitionerId, appointmentId);
 
   return {
     id: appointmentId,

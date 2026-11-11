@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { QUEUES } from '../../src/jobs/boss.js';
 import { noopHandler } from '../../src/jobs/noop.job.js';
-import { startWorker, type Worker } from '../../src/jobs/worker.js';
+import { defaultHandlers, startWorker, type Worker } from '../../src/jobs/worker.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
@@ -19,7 +19,7 @@ describe('API → worker', () => {
     worker = await startWorker({
       connectionString: database.connectionString,
       health: { port: 0, host: '127.0.0.1' },
-      handlers: { noop: handler },
+      handlers: { ...defaultHandlers, noop: handler },
       logger: false,
     });
   });

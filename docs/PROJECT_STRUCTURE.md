@@ -140,12 +140,14 @@ backend/
 │   │   │   ├── auth.logout.test.ts   # POST /auth/logout (incl. the instant-kill proof)
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
-│   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user)
-│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422
+│   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user) · POST /admin/appointments/:id/cancel (admin)
+│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422 · admin hard-cancel: conditional UPDATE + send-cancellation enqueue in one transaction, miss → 404/409/422
 │   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback; cancel cutoff boundary, ownership, statuses, race
+│   │   │   ├── appointments.admin-cancel.service.test.ts # Testcontainers: inside the user cutoff, job enqueued once, started/cancelled/unknown/time-off/other practitioner, failed enqueue rolls back, race
 │   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
 │   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
-│   │   │   └── appointments.cancel.test.ts  # inject() DELETE: 200 (slot back in GET /slots, re-bookable)/422/403/404/409/400/401, admin → 403
+│   │   │   ├── appointments.cancel.test.ts  # inject() DELETE: 200 (slot back in GET /slots, re-bookable)/422/403/404/409/400/401, admin → 403
+│   │   │   └── appointments.admin-cancel.test.ts # inject() admin cancel: 200 + job queued, slot back in GET /slots, 403/401/422/409/404/400
 │   │   ├── availability/     # admin business hours + time off
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction
@@ -171,6 +173,7 @@ backend/
 │   │   ├── boss.ts           # shared pg-boss config: queue names, createBoss/startBoss, JobQueue
 │   │   ├── worker.ts         # startWorker(): handlers + tiny /health; runWorker(): signal → drain → exit code
 │   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
+│   │   ├── send-cancellation.job.ts # payload schema { appointmentId } + placeholder handler (4.4 sends the mail)
 │   │   └── reminders.job.ts  # 24h reminder logic (incl. admin grouping)
 │   └── lib/
 │       ├── mailer.ts         # nodemailer SMTP transport (provider in prod, Mailpit in dev/test); rejects on failure so jobs retry
@@ -192,6 +195,7 @@ backend/
 │   ├── jobs/
 │   │   ├── boss.test.ts                 # schema created on start, queues, API + worker co-start
 │   │   ├── worker.test.ts               # exactly-once no-op, /health, graceful drain
+│   │   ├── transaction-db.test.ts       # a job sent through a Drizzle tx commits / rolls back with it
 │   │   └── api-enqueue.test.ts          # app.jobs.send → worker consumes it exactly once
 │   ├── mail/
 │   │   ├── mailpit-harness.test.ts      # the inbox helper finds mail by recipient, and only that
@@ -238,6 +242,7 @@ backend/
   - **`/health` is HTTP-level, not TCP.** It runs `SELECT 1` through pg-boss's own pool and answers 503 when that fails, which a port probe cannot see. Request logging is off on that server; the probe runs every 5 s.
   - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })` (the health server closes in a `finally`), and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first. `runWorker()` subscribes to SIGTERM/SIGINT **before** boot, so a stop requested mid-start still drains and exits 0 rather than Node's default 143.
   - **Handlers are injected** (`startWorker({ handlers })`), so tests can wrap the real handler and count invocations against a real Postgres.
+  - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: fromDrizzle(tx, sql) })` — pg-boss's own Drizzle adapter, which runs the insert on the transaction, so the job commits or rolls back with it (`tests/jobs/transaction-db.test.ts` proves both). The admin hard-cancel uses it, so a cancel without its notification job cannot exist.
 
 ---
 
