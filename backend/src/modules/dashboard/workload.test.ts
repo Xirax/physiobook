@@ -132,8 +132,8 @@ describe('aggregateWorkload', () => {
       expect(week?.booked).toBe(0);
     });
 
-    it('Keeps a Sunday evening in its own week in the practice timezone', () => {
-      const windows = [{ day_of_week: 0, opens_at: '22:00', closes_at: '23:00' }];
+    it('Keeps a Monday 00:00 slot (Sunday 23:00Z) in its local week', () => {
+      const windows = [{ day_of_week: 1, opens_at: '00:00', closes_at: '01:00' }];
 
       const periods = aggregate({
         windows,
