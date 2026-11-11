@@ -98,6 +98,12 @@ export class CancellationCutoffPassedError extends DomainError {
   }
 }
 
+export class AppointmentAlreadyStartedError extends DomainError {
+  constructor() {
+    super(errorCodes.APPOINTMENT_ALREADY_STARTED, 422, 'That appointment has already started');
+  }
+}
+
 export function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError;
 }
