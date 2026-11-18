@@ -77,7 +77,7 @@ recomputing over real Postgres — is untested end to end until E7.
 - [ ] Admin changes the timezone, saves → the slot preview shows the slots in
       the new timezone (same wall-clock hours, shifted UTC instants).
 - [ ] The **booking list** half of the ticket's case: after the save, the
-      patient's slot picker offers the new slots. Needs 3.5 merged first.
+      patient's slot picker (`/book`, landed in 3.5) offers the new slots.
 
 ### Already covered — do not rewrite
 
@@ -90,3 +90,38 @@ recomputing over real Postgres — is untested end to end until E7.
 | Saves invalidate the slot preview                               | `frontend/src/features/availability/availability-api.test.tsx`          |
 | Preview follows a saved week and timezone; admin-only; guard    | `frontend/src/routes/admin/AdminAvailability.test.tsx`                  |
 | The slot grid itself (hours, blocks, DST, horizon)              | `backend/src/modules/availability/slot-grid*.test.ts`, `slots*.test.ts` |
+
+---
+
+## E3.5 — Booking UI (slot picker) → owed by **E7.1 / E7.2**
+
+**Why deferred:** the same missing harness as E1.5 above — `e2e/` is still a
+placeholder and standing Playwright up is 7.1's scope; 7.2 (two-user race)
+already depends on 3.5. Agreed when 3.5 was planned.
+
+**What this costs:** the RTL suite stubs the api-client, so it proves the page
+reacts correctly to a 201, a 409 and a 422, but not that a click reaches the
+real backend. That seam is exactly where 3.5 found a bug no unit test could
+see: `/appointments` was in neither proxy list, so a booking would have died at
+the dev server. The proxy fix is now untested end to end until E7.
+
+### Cases still owed
+
+- [ ] **7.1 — book end-to-end:** a patient opens `/book`, picks an open slot,
+      confirms → sees "Booked: …", the slot is gone from the picker, and it
+      appears on `/my-appointments` once 6.2 lands.
+- [ ] **7.2 — two-tab race:** two patients poised on the same slot confirm
+      together → one sees "Booked", the other sees "Someone else has just booked
+      that slot" and the slot leaves their picker; exactly one active
+      appointment in Postgres.
+
+### Already covered — do not rewrite
+
+| Behaviour                                                  | Where                                                         |
+| ---------------------------------------------------------- | ------------------------------------------------------------- |
+| Slots per practice-tz day, taken slot absent, week limits  | `frontend/src/features/booking/SlotPicker.test.tsx`           |
+| Confirm dialog: description, focus, Escape, Tab trap, lock | `frontend/src/features/booking/ConfirmBookingDialog.test.tsx` |
+| Optimistic removal; rollback on 409, then refetch          | `frontend/src/features/booking/booking-api.test.tsx`          |
+| Practice-tz today and the 62-day horizon                   | `frontend/src/features/booking/booking-week.test.ts`          |
+| User-only; confirm before POST; 201 / 409 / 422 outcomes   | `frontend/src/routes/BookAppointment.test.tsx`                |
+| The race itself (exactly one winner, no deadlock)          | `backend/tests/race/concurrent-booking.test.ts` (3.3)         |
