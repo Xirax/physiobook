@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { QUEUES } from '../../src/jobs/boss.js';
 import { noopHandler } from '../../src/jobs/noop.job.js';
-import { defaultHandlers, startWorker, type Worker } from '../../src/jobs/worker.js';
+import { startWorker, type Worker } from '../../src/jobs/worker.js';
+import type { Mailer } from '../../src/lib/mailer.js';
+import { createMailpitMailer } from '../helpers/mailpit.js';
 import { buildTestApp } from '../helpers/test-app.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
@@ -11,21 +13,25 @@ describe('API → worker', () => {
   let database: TestDatabase;
   let app: FastifyInstance;
   let worker: Worker;
+  let mailer: Mailer;
   const handler = vi.fn(noopHandler);
 
   beforeAll(async () => {
     database = await createTestDatabase();
     app = await buildTestApp({ databaseUrl: database.connectionString });
+    mailer = createMailpitMailer();
     worker = await startWorker({
       connectionString: database.connectionString,
       health: { port: 0, host: '127.0.0.1' },
-      handlers: { ...defaultHandlers, noop: handler },
+      mailer,
+      handlers: { noop: handler },
       logger: false,
     });
   });
 
   afterAll(async () => {
     await worker?.close();
+    mailer?.close();
     await app?.close();
     await database?.drop();
   });

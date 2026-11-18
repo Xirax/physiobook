@@ -1,16 +1,16 @@
 import { createServer, type AddressInfo } from 'node:net';
 
+import { appointments, calendarBlocks, users } from '@physiobook/db';
+import { eq } from 'drizzle-orm';
 import type { Job, PgBoss } from 'pg-boss';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createBoss, createJobQueue, QUEUES, startBoss } from '../../src/jobs/boss.js';
 import { noopHandler } from '../../src/jobs/noop.job.js';
-import {
-  buildHealthServer,
-  defaultHandlers,
-  startWorker,
-  type Worker,
-} from '../../src/jobs/worker.js';
+import { buildHealthServer, startWorker, type Worker } from '../../src/jobs/worker.js';
+import type { Mailer } from '../../src/lib/mailer.js';
+import { tstzrangeOf } from '../../src/lib/period.js';
+import { createMailpitMailer, uniqueRecipient, waitForMessage } from '../helpers/mailpit.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/test-db.js';
 
 const JOB_SETTLED_TIMEOUT = { timeout: 15_000, interval: 100 };
@@ -23,12 +23,14 @@ describe('worker', () => {
   let database: TestDatabase;
   let api: PgBoss;
   let worker: Worker | undefined;
+  let mailer: Mailer;
 
   const launch = async (handler = vi.fn(noopHandler)): Promise<Worker> => {
     worker = await startWorker({
       connectionString: database.connectionString,
       health: { port: 0, host: '127.0.0.1' },
-      handlers: { ...defaultHandlers, noop: handler },
+      mailer,
+      handlers: { noop: handler },
       logger: false,
     });
 
@@ -40,6 +42,14 @@ describe('worker', () => {
 
     return job?.state;
   };
+
+  beforeAll(() => {
+    mailer = createMailpitMailer();
+  });
+
+  afterAll(() => {
+    mailer?.close();
+  });
 
   beforeEach(async () => {
     database = await createTestDatabase();
@@ -75,6 +85,36 @@ describe('worker', () => {
     ]);
     const [job] = await api.findJobs(QUEUES.noop, { id: id ?? '' });
     expect(job?.retryCount).toBe(0);
+  });
+
+  it('sends the reminder mail for a send-reminder job with its default handler', async () => {
+    await launch();
+    const email = uniqueRecipient('worker-reminder');
+    const [patient] = await database.db
+      .insert(users)
+      .values({ email, passwordHash: 'x', fullName: 'Worker Patient' })
+      .returning({ id: users.id });
+    const [admin] = await database.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'admin'));
+    const [block] = await database.db
+      .insert(calendarBlocks)
+      .values({
+        practitionerId: admin!.id,
+        kind: 'appointment',
+        period: tstzrangeOf({ start: '2026-11-19T09:00:00Z', end: '2026-11-19T10:00:00Z' }),
+      })
+      .returning({ id: calendarBlocks.id });
+    const [appointment] = await database.db
+      .insert(appointments)
+      .values({ blockId: block!.id, userId: patient!.id })
+      .returning({ id: appointments.id });
+
+    await createJobQueue(api).send(QUEUES.sendReminder, { appointmentId: appointment!.id });
+
+    const mail = await waitForMessage(email, { timeout: 15_000 });
+    expect(mail.Subject).toContain('Reminder: your appointment');
   });
 
   it('reports healthy on /health over HTTP while connected', async () => {
@@ -159,6 +199,7 @@ describe('worker', () => {
         startWorker({
           connectionString: database.connectionString,
           health: { port, host: '127.0.0.1' },
+          mailer,
           logger: false,
         }),
       ).rejects.toThrow(/EADDRINUSE/);
