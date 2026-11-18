@@ -66,7 +66,7 @@ Cross-cutting concerns are **Fastify plugins** (`src/plugins/`): `auth` (JWT ver
 - The worker (`src/jobs/worker.ts`) runs as a **separate process/service** from the API. Do not do slow work (email send, reminders) inside a request handler.
 - On booking, **schedule** the reminder job for `start − reminder_lead_hours`; skip scheduling if the appointment is inside the window.
 - Jobs must be **idempotent.** Use `notification_log.dedupe_key` so a pg-boss retry cannot double-send. Assume every job can run more than once.
-- On cancellation, cancel the pending reminder job.
+- On cancellation, leave the reminder job alone: the handler self-guards and sends nothing for an appointment that is no longer active (E4.3/E5.2).
 
 ---
 
