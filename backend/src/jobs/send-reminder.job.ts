@@ -173,7 +173,7 @@ export async function sendReminders(
 
   await claimAndSend(
     {
-      dedupeKey: `reminder:admin-run:${appointment.start.toISOString()}`,
+      dedupeKey: `reminder:admin-run:${appointment.practitionerId}:${appointment.start.toISOString()}`,
       type: 'reminder_admin_grouped',
       recipientRole: 'admin',
       recipientUserId: appointment.practitionerId,

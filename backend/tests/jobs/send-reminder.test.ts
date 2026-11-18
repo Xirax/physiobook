@@ -28,7 +28,7 @@ describe('send-reminder job', () => {
   const run = (appointmentId: string, deps: { mailer?: Mailer } = {}) =>
     sendReminders(appointmentId, { db: database.db, mailer: deps.mailer ?? mailer });
 
-  const book = async (hoursFromTen: number, patientName: string) => {
+  const book = async (hoursFromTen: number, patientName: string, practitionerId = adminId) => {
     const email = uniqueRecipient('patient');
     const [patient] = await database.db
       .insert(users)
@@ -38,7 +38,7 @@ describe('send-reminder job', () => {
     const [block] = await database.db
       .insert(calendarBlocks)
       .values({
-        practitionerId: adminId,
+        practitionerId,
         kind: 'appointment',
         period: tstzrangeOf({ start, end: new Date(start.getTime() + HOUR_MS) }),
       })
@@ -121,7 +121,7 @@ describe('send-reminder job', () => {
           recipientRole: 'user',
         }),
         expect.objectContaining({
-          dedupeKey: `reminder:admin-run:${TEN}`,
+          dedupeKey: `reminder:admin-run:${adminId}:${TEN}`,
           type: 'reminder_admin_grouped',
           recipientRole: 'admin',
           recipientUserId: adminId,
@@ -173,7 +173,7 @@ describe('send-reminder job', () => {
     expect(adminMail.Subject).toContain('2 appointments starting at 11:00');
     expect(await findMessages(cancelled.email)).toEqual([]);
     expect((await logRows()).map((row) => row.dedupeKey)).toContain(
-      `reminder:admin-run:${hoursAfterTen(1).toISOString()}`,
+      `reminder:admin-run:${adminId}:${hoursAfterTen(1).toISOString()}`,
     );
   });
 
@@ -189,6 +189,24 @@ describe('send-reminder job', () => {
       'Reminder: 1 appointment at 10:00 on Thursday 19 November 2026',
       'Reminder: 1 appointment at 12:00 on Thursday 19 November 2026',
     ]);
+  });
+
+  it('sends each practitioner their own admin mail for runs starting at the same instant', async () => {
+    // A second practitioner as a plain user row: the single-admin index forbids
+    // a second admin, but calendar_blocks.practitioner_id only references users.
+    const otherEmail = uniqueRecipient('other-practitioner');
+    const [other] = await database.db
+      .insert(users)
+      .values({ email: otherEmail, passwordHash: 'x', fullName: 'Other Practitioner' })
+      .returning({ id: users.id });
+    const ours = await book(0, 'Anna');
+    const theirs = await book(0, 'Jan', other!.id);
+
+    await run(ours.id);
+    await run(theirs.id);
+
+    expect((await waitForMessage(adminEmail)).Text).toContain('Anna');
+    expect((await waitForMessage(otherEmail)).Text).toContain('Jan');
   });
 
   it('sends separate admin mails for appointments that are not back to back', async () => {
