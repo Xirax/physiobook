@@ -5,6 +5,7 @@ export const paths = {
   login: '/login',
   register: '/register',
   appointments: '/appointments',
+  book: '/book',
   admin: '/admin',
   adminAvailability: '/admin/availability',
 } as const;
