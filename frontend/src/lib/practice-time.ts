@@ -33,6 +33,24 @@ export function dayMonthLabel(date: string): string {
   );
 }
 
+/** A slot in full, as "Monday, 2 November 2026, 09:00–10:00" on the practice's wall clock. */
+export function slotLabel({ start, end }: Slot, timezone: string): string {
+  const day = new Intl.DateTimeFormat(LOCALE, {
+    timeZone: timezone,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const time = new Intl.DateTimeFormat(LOCALE, {
+    timeZone: timezone,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  return `${day.format(new Date(start))}, ${time.format(new Date(start))}–${time.format(new Date(end))}`;
+}
+
 export interface SlotDay {
   date: string;
   label: string;

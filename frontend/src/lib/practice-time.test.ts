@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { addDays, calendarDate, dayMonthLabel, dayRange, groupSlotsByDay } from './practice-time';
+import {
+  addDays,
+  calendarDate,
+  dayMonthLabel,
+  dayRange,
+  groupSlotsByDay,
+  slotLabel,
+} from './practice-time';
 
 const slot = (start: string, end: string) => ({ start, end });
 
@@ -34,6 +41,20 @@ describe('dayMonthLabel', () => {
   it('Names the calendar day it is given, whatever the browser timezone', () => {
     expect(dayMonthLabel('2026-11-02')).toBe('2 November');
     expect(dayMonthLabel('2026-12-31')).toBe('31 December');
+  });
+});
+
+describe('slotLabel', () => {
+  it('Spells the slot out on the practice wall clock', () => {
+    expect(
+      slotLabel(slot('2026-11-02T08:00:00.000Z', '2026-11-02T09:00:00.000Z'), 'Europe/Warsaw'),
+    ).toBe('Monday, 2 November 2026, 09:00–10:00');
+  });
+
+  it('Names the practice day even when the UTC date differs', () => {
+    expect(
+      slotLabel(slot('2026-11-02T23:00:00.000Z', '2026-11-03T00:00:00.000Z'), 'Europe/Warsaw'),
+    ).toBe('Tuesday, 3 November 2026, 00:00–01:00');
   });
 });
 
