@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addDays,
   calendarDate,
-  dayMonthLabel,
+  dateRangeLabel,
   dayRange,
   groupSlotsByDay,
   slotLabel,
@@ -37,10 +37,17 @@ describe('dayRange', () => {
   });
 });
 
-describe('dayMonthLabel', () => {
-  it('Names the calendar day it is given, whatever the browser timezone', () => {
-    expect(dayMonthLabel('2026-11-02')).toBe('2 November');
-    expect(dayMonthLabel('2026-12-31')).toBe('31 December');
+describe('dateRangeLabel', () => {
+  it('Puts the year on the end date only, within one year', () => {
+    expect(dateRangeLabel('2026-11-02', '2026-11-08')).toBe('2 November – 8 November 2026');
+  });
+
+  it('Puts the year on both dates when the range crosses a year end', () => {
+    expect(dateRangeLabel('2026-12-28', '2027-01-03')).toBe('28 December 2026 – 3 January 2027');
+  });
+
+  it('Names the calendar days it is given, whatever the browser timezone', () => {
+    expect(dateRangeLabel('2026-12-31', '2026-12-31')).toBe('31 December – 31 December 2026');
   });
 });
 

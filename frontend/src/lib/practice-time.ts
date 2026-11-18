@@ -26,11 +26,29 @@ export function dayRange(from: string, days: number): SlotsQuery {
   return { from, to: addDays(from, days - 1) };
 }
 
-/** A YYYY-MM-DD date as "2 November". It names a calendar day, so no timezone moves it. */
-export function dayMonthLabel(date: string): string {
-  return new Intl.DateTimeFormat(LOCALE, { timeZone: 'UTC', day: 'numeric', month: 'long' }).format(
-    Date.parse(date),
+/**
+ * Two YYYY-MM-DD dates as "2 November – 8 November 2026". The end always
+ * carries its year and the start does too when the range crosses a year end,
+ * since the booking horizon routinely does. The dates name calendar days, so
+ * they are formatted in UTC and no timezone moves them.
+ */
+export function dateRangeLabel(from: string, to: string): string {
+  const withYear = new Intl.DateTimeFormat(LOCALE, {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const withoutYear = new Intl.DateTimeFormat(LOCALE, {
+    timeZone: 'UTC',
+    day: 'numeric',
+    month: 'long',
+  });
+  const start = (from.slice(0, 4) === to.slice(0, 4) ? withoutYear : withYear).format(
+    Date.parse(from),
   );
+
+  return `${start} – ${withYear.format(Date.parse(to))}`;
 }
 
 /** A slot in full, as "Monday, 2 November 2026, 09:00–10:00" on the practice's wall clock. */

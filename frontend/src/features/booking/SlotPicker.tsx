@@ -1,7 +1,7 @@
 import type { Slot, SlotsQuery, SlotsResponse } from '@physiobook/shared';
 import { useId } from 'react';
 
-import { dayMonthLabel, groupSlotsByDay } from '../../lib/practice-time';
+import { dateRangeLabel, groupSlotsByDay } from '../../lib/practice-time';
 import styles from './Booking.module.scss';
 
 export type SlotPickerState =
@@ -97,7 +97,7 @@ export const SlotPicker = ({
           Previous week
         </button>
         <h2 className={styles.heading} id={headingId}>
-          {`${dayMonthLabel(week.from)} – ${dayMonthLabel(week.to)}`}
+          {dateRangeLabel(week.from, week.to)}
         </h2>
         <button
           className={styles.secondary}

@@ -125,7 +125,9 @@ describe('Picking a slot', () => {
       answer: practice({ timezone: 'Pacific/Auckland', open: [auckland] }).answer,
     });
 
-    expect(await screen.findByRole('heading', { name: '3 November – 9 November' })).toBeVisible();
+    expect(
+      await screen.findByRole('heading', { name: '3 November – 9 November 2026' }),
+    ).toBeVisible();
     expect(slotRequests(api.request).at(-1)).toBe('/slots?from=2026-11-03&to=2026-11-09');
   });
 
@@ -156,7 +158,7 @@ describe('Picking a slot', () => {
     for (let week = 0; week < 8; week += 1) await userEvent.click(next);
 
     expect(
-      await screen.findByRole('heading', { name: '28 December – 3 January' }),
+      await screen.findByRole('heading', { name: '28 December 2026 – 3 January 2027' }),
     ).toBeInTheDocument();
     expect(next).toBeDisabled();
   });

@@ -65,7 +65,9 @@ describe('SlotPicker', () => {
   it('Names the week it shows and steps between weeks', async () => {
     const { onPrevious, onNext } = renderPicker({ status: 'success', data: week });
 
-    expect(screen.getByRole('heading', { name: '2 November – 8 November' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '2 November – 8 November 2026' }),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Previous week' }));
     await userEvent.click(screen.getByRole('button', { name: 'Next week' }));
