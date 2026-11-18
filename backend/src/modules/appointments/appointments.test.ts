@@ -114,6 +114,20 @@ describe('POST /appointments', () => {
     expect(await bookedUserIds()).toEqual([noraId]);
   });
 
+  it('Schedules the reminder through the app job queue', async () => {
+    const response = await post({ start: '2026-11-09T08:00:00Z' }, noraToken);
+
+    const { rows } = await database.pool.query<{ data: unknown; start_after: Date }>(
+      `SELECT data, start_after FROM pgboss.job WHERE name = 'send-reminder'`,
+    );
+    expect(rows).toEqual([
+      {
+        data: { appointmentId: response.json().id },
+        start_after: new Date('2026-11-08T08:00:00Z'),
+      },
+    ]);
+  });
+
   it('Takes the booked slot out of GET /slots', async () => {
     await post({ start: at('08:00') }, noraToken);
 

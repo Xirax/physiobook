@@ -1,10 +1,11 @@
 import { appointments, calendarBlocks, type Database } from '@physiobook/db';
-import type { Appointment, BookAppointmentRequest } from '@physiobook/shared';
+import type { Appointment, BookAppointmentRequest, PracticeSettings } from '@physiobook/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { fromDrizzle } from 'pg-boss';
 
 import { type JobQueue, QUEUES } from '../../jobs/boss.js';
 import type { SendCancellationPayload } from '../../jobs/send-cancellation.job.js';
+import type { SendReminderPayload } from '../../jobs/send-reminder.job.js';
 import {
   AlreadyCancelledError,
   AppointmentAlreadyStartedError,
@@ -28,24 +29,35 @@ export interface AppointmentsDependencies {
 const HOUR_MS = 3_600_000;
 const SLOT_MS = HOUR_MS;
 
-async function assertBookable(db: Database, start: Date, now: Date): Promise<void> {
-  const [{ timezone }, { windows }] = await Promise.all([
+/** Resolves the practice settings the booking was checked against. */
+async function assertBookable(db: Database, start: Date, now: Date): Promise<PracticeSettings> {
+  const [settings, { windows }] = await Promise.all([
     getSettings({ db }),
     getBusinessHours({ db }),
   ]);
 
-  if (!isSlotBookable(start, { timezone, windows, now })) throw new SlotNotBookableError();
+  if (!isSlotBookable(start, { timezone: settings.timezone, windows, now })) {
+    throw new SlotNotBookableError();
+  }
+
+  return settings;
+}
+
+export interface BookingDependencies extends AppointmentsDependencies {
+  jobs: JobQueue;
 }
 
 export async function bookAppointment(
   userId: string,
   input: BookAppointmentRequest,
-  { db, now }: AppointmentsDependencies,
+  { db, now, jobs }: BookingDependencies,
 ): Promise<Appointment> {
   const start = new Date(input.start);
   const end = new Date(start.getTime() + SLOT_MS);
+  const bookedAt = now();
 
-  await assertBookable(db, start, now());
+  const { reminder_lead_hours: leadHours } = await assertBookable(db, start, bookedAt);
+  const remindAt = new Date(start.getTime() - leadHours * HOUR_MS);
   const practitionerId = await findPractitionerId(db);
 
   // Freeness is deliberately not checked above: the EXCLUDE constraint decides
@@ -76,6 +88,14 @@ export async function bookAppointment(
       .returning({ id: appointments.id });
 
     if (appointment === undefined) throw new Error('appointment insert returned no row');
+
+    if (remindAt > bookedAt) {
+      const payload: SendReminderPayload = { appointmentId: appointment.id };
+      await jobs.send(QUEUES.sendReminder, payload, {
+        db: fromDrizzle(tx, sql),
+        startAfter: remindAt,
+      });
+    }
 
     return {
       id: appointment.id,
