@@ -83,7 +83,7 @@ afterEach(() => {
 
 describe('Reaching the booking page', () => {
   it('Is in the patient’s nav', async () => {
-    renderAppAt('/appointments', { session: testUser, answer: practice().answer });
+    renderAppAt('/my-appointments', { session: testUser, answer: practice().answer });
 
     await userEvent.click(await screen.findByRole('link', { name: 'Book' }));
 
@@ -196,7 +196,7 @@ describe('Booking a slot', () => {
     expect(screen.queryByRole('button', { name: 'Monday 2 November, 09:00' })).toBeNull();
     expect(screen.getByRole('link', { name: 'See your appointments' })).toHaveAttribute(
       'href',
-      '/appointments',
+      '/my-appointments',
     );
   });
 

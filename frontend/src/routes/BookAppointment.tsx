@@ -37,7 +37,7 @@ const OutcomeMessage = ({ outcome }: { outcome: Outcome }) =>
   outcome.status === 'booked' ? (
     <p className={styles.success} role="status">
       {`Booked: ${outcome.label}. `}
-      <Link to={paths.appointments}>See your appointments</Link>
+      <Link to={paths.myAppointments}>See your appointments</Link>
     </p>
   ) : (
     <p className={styles.alert} role="alert">

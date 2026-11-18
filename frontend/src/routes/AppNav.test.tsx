@@ -7,7 +7,7 @@ import { currentPath, renderAppAt, testAdmin, testUser } from '../../tests/rende
 
 describe('The nav a role is given', () => {
   it('Offers a user their own area and nothing of the admin’s', async () => {
-    renderAppAt('/appointments', { session: testUser });
+    renderAppAt('/my-appointments', { session: testUser });
 
     expect(await screen.findByRole('link', { name: 'Appointments' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Dashboard' })).not.toBeInTheDocument();
@@ -21,13 +21,13 @@ describe('The nav a role is given', () => {
   });
 
   it('Names the person who is signed in', async () => {
-    renderAppAt('/appointments', { session: testUser });
+    renderAppAt('/my-appointments', { session: testUser });
 
     expect(await screen.findByText('Grace Hopper')).toBeInTheDocument();
   });
 
   it('Marks the page the visitor is on', async () => {
-    renderAppAt('/appointments', { session: testUser });
+    renderAppAt('/my-appointments', { session: testUser });
 
     expect(await screen.findByRole('link', { name: 'Appointments' })).toHaveAttribute(
       'aria-current',
@@ -47,7 +47,7 @@ describe('The nav a role is given', () => {
 
 describe('Logging out', () => {
   it('Tells the API, then leaves the app logged out at the login page', async () => {
-    const { api } = renderAppAt('/appointments', { session: testUser });
+    const { api } = renderAppAt('/my-appointments', { session: testUser });
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
@@ -59,7 +59,7 @@ describe('Logging out', () => {
   });
 
   it('Takes the nav away with it', async () => {
-    renderAppAt('/appointments', { session: testUser });
+    renderAppAt('/my-appointments', { session: testUser });
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 

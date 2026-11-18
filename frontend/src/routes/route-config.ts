@@ -25,7 +25,7 @@ export const routeConfig: readonly AppRoute[] = [
   { path: paths.login, Component: LoginRoute },
   { path: paths.register, Component: RegisterRoute },
   {
-    path: paths.appointments,
+    path: paths.myAppointments,
     Component: MyAppointments,
     requires: 'user',
     navLabel: 'Appointments',

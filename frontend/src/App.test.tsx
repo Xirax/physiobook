@@ -62,7 +62,7 @@ describe('The auth-loading gate', () => {
       answer = resolve;
     });
 
-    renderAppAt('/appointments', {
+    renderAppAt('/my-appointments', {
       session: testUser,
       refresh: async () => {
         await held;

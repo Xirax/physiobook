@@ -16,8 +16,11 @@ const backendOrigin = process.env['BACKEND_ORIGIN'] ?? 'http://localhost:3000';
  * rewritten in two places to stay in agreement, and silent refresh would break
  * in the one way that looks like a logged-out user rather than an error.
  * `docker/frontend/nginx.conf` mirrors this list for the production build.
+ *
+ * Each entry is a prefix, so no SPA route may begin with one — which is why the
+ * patient's page is `/my-appointments`, not `/appointments`.
  */
-const apiPaths = ['/auth', '/health', '/business-hours', '/settings', '/slots'];
+const apiPaths = ['/auth', '/health', '/business-hours', '/settings', '/slots', '/appointments'];
 
 export default defineConfig({
   plugins: [react()],
