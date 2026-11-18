@@ -4,6 +4,9 @@ import { inclusiveDays } from './date-range.js';
 
 export const SLOT_RANGE_MAX_DAYS = 62;
 
+/** A slot is bookable only while now < start < now + this many days. */
+export const BOOKING_HORIZON_DAYS = 62;
+
 export const slotsQuerySchema = z
   .strictObject({
     from: z.iso.date({ message: 'Enter a date as YYYY-MM-DD' }),

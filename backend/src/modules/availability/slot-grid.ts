@@ -1,7 +1,6 @@
+import { BOOKING_HORIZON_DAYS } from '@physiobook/shared';
 import type { BusinessHoursWindow } from '@physiobook/shared';
 import { DateTime } from 'luxon';
-
-export const BOOKING_HORIZON_DAYS = 62;
 
 const MINUTES_PER_HOUR = 60;
 const MS_PER_MINUTE = 60_000;
