@@ -191,7 +191,7 @@ Audit + idempotency for the 24h reminders (so a job retry can't double-send).
 | `recipient_user_id` | `uuid`           | FK → `users.id`, nullable (admin grouped mail may be practice-wide)                           |
 | `type`              | `text`           | `'reminder_user'`, `'reminder_admin_grouped'` (E4.3); 4.4 adds its own                        |
 | `dedupe_key`        | `text`           | **unique**; `reminder:user:{appointmentId}`, `reminder:admin-run:{practitionerId}:{runStart}` |
-| `sent_at`           | `timestamptz`    | `default now()`                                                                               |
+| `sent_at`           | `timestamptz`    | set from the app's injected clock; `default now()` is only a fallback                         |
 | `payload`           | `jsonb`          | what was sent: `{ to, subject }`                                                              |
 
 - The `dedupe_key` unique constraint (`notification_log_dedupe_key_unique`) is what makes reminders exactly-once even if pg-boss retries: the job inserts the row (`ON CONFLICT DO NOTHING`) and sends the mail in one transaction, so a failed send releases the key for the retry.

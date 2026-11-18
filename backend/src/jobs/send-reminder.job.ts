@@ -29,6 +29,7 @@ export type SendReminderPayload = z.infer<typeof sendReminderPayloadSchema>;
 export interface ReminderDependencies {
   db: Database;
   mailer: Mailer;
+  now: () => Date;
 }
 
 interface Notification {
@@ -47,12 +48,12 @@ interface Notification {
  */
 async function claimAndSend(
   { to, content, ...entry }: Notification,
-  { db, mailer }: ReminderDependencies,
+  { db, mailer, now }: ReminderDependencies,
 ): Promise<void> {
   await db.transaction(async (tx) => {
     const [claimed] = await tx
       .insert(notificationLog)
-      .values({ ...entry, payload: { to, subject: content.subject } })
+      .values({ ...entry, sentAt: now(), payload: { to, subject: content.subject } })
       .onConflictDoNothing({ target: notificationLog.dedupeKey })
       .returning({ id: notificationLog.id });
 

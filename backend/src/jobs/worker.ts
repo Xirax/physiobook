@@ -32,6 +32,7 @@ export interface WorkerOptions {
   mailer: Mailer;
   /** Replaces individual default handlers, e.g. to count invocations in a test. */
   handlers?: Partial<JobHandlers>;
+  now?: () => Date;
   logger?: boolean;
 }
 
@@ -74,6 +75,7 @@ export async function startWorker({
   health: { port, host },
   mailer,
   handlers: overrides = {},
+  now = () => new Date(),
   logger = true,
 }: WorkerOptions): Promise<Worker> {
   const health = createHealthServer(logger);
@@ -89,7 +91,7 @@ export async function startWorker({
   await startBoss(boss);
 
   const database = createDatabase(connectionString, { application_name: 'physiobook-worker' });
-  const handlers = { ...createDefaultHandlers({ db: database.db, mailer }), ...overrides };
+  const handlers = { ...createDefaultHandlers({ db: database.db, mailer, now }), ...overrides };
   // close() may be retried after pg-boss fails to stop; the pool may end only once.
   let databaseClosing: Promise<void> | undefined;
   const closeDatabase = () => (databaseClosing ??= database.close());

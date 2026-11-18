@@ -18,6 +18,8 @@ const HOUR_MS = 3_600_000;
 // Thursday 2026-11-19 on CET: 09:00Z is 10:00 in Warsaw.
 const TEN = '2026-11-19T09:00:00.000Z';
 const hoursAfterTen = (hours: number) => new Date(Date.parse(TEN) + hours * HOUR_MS);
+const FIRED_AT = hoursAfterTen(-24);
+const now = () => FIRED_AT;
 
 describe('send-reminder job', () => {
   let mailer: Mailer;
@@ -26,7 +28,7 @@ describe('send-reminder job', () => {
   let adminEmail: string;
 
   const run = (appointmentId: string, deps: { mailer?: Mailer } = {}) =>
-    sendReminders(appointmentId, { db: database.db, mailer: deps.mailer ?? mailer });
+    sendReminders(appointmentId, { db: database.db, mailer: deps.mailer ?? mailer, now });
 
   const book = async (hoursFromTen: number, patientName: string, practitionerId = adminId) => {
     const email = uniqueRecipient('patient');
@@ -119,12 +121,14 @@ describe('send-reminder job', () => {
           dedupeKey: `reminder:user:${appointment.id}`,
           type: 'reminder_user',
           recipientRole: 'user',
+          sentAt: FIRED_AT,
         }),
         expect.objectContaining({
           dedupeKey: `reminder:admin-run:${adminId}:${TEN}`,
           type: 'reminder_admin_grouped',
           recipientRole: 'admin',
           recipientUserId: adminId,
+          sentAt: FIRED_AT,
         }),
       ]),
     );
@@ -281,7 +285,7 @@ describe('send-reminder job', () => {
 
     it('sends the reminders for the appointment in its payload', async () => {
       const appointment = await book(0, 'Anna');
-      const handler = createSendReminderHandler({ db: database.db, mailer });
+      const handler = createSendReminderHandler({ db: database.db, mailer, now });
 
       await handler(jobWith({ appointmentId: appointment.id }));
 
@@ -289,7 +293,7 @@ describe('send-reminder job', () => {
     });
 
     it('fails the job on a malformed payload', async () => {
-      const handler = createSendReminderHandler({ db: database.db, mailer });
+      const handler = createSendReminderHandler({ db: database.db, mailer, now });
 
       await expect(handler(jobWith({ appointmentId: 'not-a-uuid' }))).rejects.toThrow();
     });
