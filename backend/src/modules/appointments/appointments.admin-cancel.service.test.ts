@@ -31,7 +31,7 @@ describe('adminCancelAppointment', () => {
   let patientId: string;
 
   const book = (now = BOOKED_AT) =>
-    bookAppointment(patientId, { start: START }, { db: database.db, now: () => now });
+    bookAppointment(patientId, { start: START }, { db: database.db, now: () => now, jobs });
 
   const cancel = (id: string, { now = SAME_DAY, queue = jobs } = {}) =>
     adminCancelAppointment(adminId, id, { db: database.db, now: () => now, jobs: queue });

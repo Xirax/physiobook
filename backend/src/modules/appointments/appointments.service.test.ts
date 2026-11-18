@@ -4,6 +4,7 @@ import { appointments, users, type Database } from '@physiobook/db';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import type { JobQueue } from '../../jobs/boss.js';
 import {
   AlreadyCancelledError,
   CancellationCutoffPassedError,
@@ -24,6 +25,9 @@ const NOW = new Date('2026-11-01T12:00:00Z');
 
 const at = (time: string) => `2026-11-02T${time}:00.000Z`;
 
+// Reminder scheduling has its own suite (appointments.reminder.test.ts).
+const noJobs: JobQueue = { send: () => Promise.resolve(null) };
+
 const MONDAY_9_TO_13 = { windows: [{ day_of_week: 1, opens_at: '09:00', closes_at: '13:00' }] };
 
 describe('appointments service', () => {
@@ -39,7 +43,7 @@ describe('appointments service', () => {
   const setTimezone = (timezone: string) => setSettings({ timezone });
 
   const book = (start: string, { user = patientId, now = NOW, db = database.db } = {}) =>
-    bookAppointment(user, { start }, { db, now: () => now });
+    bookAppointment(user, { start }, { db, now: () => now, jobs: noJobs });
 
   interface BlockOptions {
     kind?: 'appointment' | 'time_off';

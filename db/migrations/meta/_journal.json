@@ -64,6 +64,13 @@
       "when": 1793536443941,
       "tag": "0008_calendar_blocks_note",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795026737157,
+      "tag": "0009_notification_log",
+      "breakpoints": true
     }
   ]
 }

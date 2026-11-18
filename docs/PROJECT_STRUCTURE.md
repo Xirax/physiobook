@@ -143,11 +143,12 @@ backend/
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
 │   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user) · POST /admin/appointments/:id/cancel (admin)
-│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN · cancel: one conditional UPDATE, miss → 404/403/409/422 · admin hard-cancel: conditional UPDATE + send-cancellation enqueue in one transaction, miss → 404/409/422
+│   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN; send-reminder enqueued in the same transaction at start − reminder_lead_hours (skipped inside the window) · cancel: one conditional UPDATE, miss → 404/403/409/422 · admin hard-cancel: conditional UPDATE + send-cancellation enqueue in one transaction, miss → 404/409/422
 │   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback; cancel cutoff boundary, ownership, statuses, race
+│   │   │   ├── appointments.reminder.test.ts # Testcontainers + pg-boss: startAfter = start − lead, none inside the window, lead change does not reschedule, losing/failed booking leaves no job
 │   │   │   ├── appointments.admin-cancel.service.test.ts # Testcontainers: inside the user cutoff, job enqueued once, started/cancelled/unknown/time-off/other practitioner, failed enqueue rolls back, race
 │   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
-│   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots
+│   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots, reminder job queued
 │   │   │   ├── appointments.cancel.test.ts  # inject() DELETE: 200 (slot back in GET /slots, re-bookable)/422/403/404/409/400/401, admin → 403
 │   │   │   └── appointments.admin-cancel.test.ts # inject() admin cancel: 200 + job queued, slot back in GET /slots, 403/401/422/409/404/400
 │   │   ├── availability/     # admin business hours + time off
@@ -168,15 +169,15 @@ backend/
 │   │   │   └── time-off.test.ts           # inject(): 201/409/422/400/403/401, 204/404/409/422, slots hidden and freed
 │   │   ├── practitioner/
 │   │   │   └── practitioner.service.ts  # findPractitionerId() — the single admin (slots + booking)
-│   │   ├── dashboard/        # workload aggregation
-│   │   └── notifications/    # schedules pg-boss jobs
-│   ├── worker.ts             # worker process entrypoint: validated env → runWorker(startWorker)
+│   │   └── dashboard/        # workload aggregation
+│   ├── worker.ts             # worker process entrypoint: validated env → mailer → runWorker(startWorker); closes the mailer on exit
 │   ├── jobs/
 │   │   ├── boss.ts           # shared pg-boss config: queue names, createBoss/startBoss, JobQueue
-│   │   ├── worker.ts         # startWorker(): handlers + tiny /health; runWorker(): signal → drain → exit code
+│   │   ├── worker.ts         # startWorker(): own db pool, createDefaultHandlers({ db, mailer }) + tiny /health; runWorker(): signal → drain → exit code
 │   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
 │   │   ├── send-cancellation.job.ts # payload schema { appointmentId } + placeholder handler (4.4 sends the mail)
-│   │   └── reminders.job.ts  # 24h reminder logic (incl. admin grouping)
+│   │   ├── send-reminder.job.ts # 24h reminder: self-guard, user mail, grouped admin mail for the run start; claim + send in one transaction
+│   │   └── reminder-mail.ts  # user + grouped-admin reminder templates, rendered in the practice timezone
 │   └── lib/
 │       ├── mailer.ts         # nodemailer SMTP transport (provider in prod, Mailpit in dev/test); rejects on failure so jobs retry
 │       ├── mail-template.ts  # defineTemplate(): {subject, text, html} from one set of paragraphs, HTML-escaped
@@ -185,18 +186,20 @@ backend/
 │   ├── helpers/
 │   │   ├── test-app.ts       # builds Fastify app for `.inject()`
 │   │   ├── global-setup.ts   # Vitest globalSetup: boot Postgres once (durability off) → load init.sql → migrate a template; boot Mailpit alongside
-│   │   ├── mailpit.ts        # Mailpit HTTP API client: uniqueRecipient(), findMessages(), waitForMessage()
+│   │   ├── mailpit.ts        # Mailpit HTTP API client: uniqueRecipient(), findMessages(), waitForMessage(), createMailpitMailer()
 │   │   ├── test-db.ts        # clones that template into a fresh DB per test file
 │   │   └── postgres-uri.ts   # retargets a connection URI at another database
 │   ├── db/
 │   │   ├── extensions.test.ts           # proves init.sql reaches test DBs (btree_gist usable)
 │   │   ├── test-database.test.ts        # proves the harness migrates and isolates
 │   │   ├── users.test.ts                # citext email, single-admin index, updated_at trigger
+│   │   ├── notification-log.test.ts     # unique dedupe_key, nullable recipient FK
 │   │   ├── sessions.test.ts             # FK cascade, NOT NULL expiry, revocation stamp
 │   │   └── business-hours.test.ts       # day_of_week range + closes_after_opens CHECKs
 │   ├── jobs/
 │   │   ├── boss.test.ts                 # schema created on start, queues, API + worker co-start
-│   │   ├── worker.test.ts               # exactly-once no-op, /health, graceful drain
+│   │   ├── worker.test.ts               # exactly-once no-op, default send-reminder handler mails, /health, graceful drain
+│   │   ├── send-reminder.test.ts        # Testcontainers + Mailpit: user/admin mails, grouping, cancellations, retries, concurrency
 │   │   ├── transaction-db.test.ts       # a job sent through a Drizzle tx commits / rolls back with it
 │   │   └── api-enqueue.test.ts          # app.jobs.send → worker consumes it exactly once
 │   ├── mail/
@@ -240,11 +243,13 @@ backend/
 - **`error-handler.ts` is registered before the routes**, and its first branch handles a thrown non-object. That ordering is load-bearing: `hasZodFastifySchemaValidationErrors` narrows with the `in` operator, which raises a `TypeError` on a primitive — and a `TypeError` raised inside an error handler is not caught by it, so Fastify would answer in its own default shape with an internal message attached.
 - The **pg-boss worker** is a separate process (`src/worker.ts` → `jobs/worker.ts`) so notifications run independently of the API — it gets its own service in Docker (ticket 4.1). Decisions worth not re-deriving:
   - **One config module, two roles.** `jobs/boss.ts` builds the instance for both sides so they agree on schema and queue names. The API's role (`plugins/jobs.ts`) only ever sees a `JobQueue` (`send`), never `work`; supervision/maintenance and cron run in the worker alone. pg-boss creates its own `pgboss` schema on `start()` — no Drizzle migration owns it — and every queue in `QUEUES` is created on start by both roles (idempotent).
-  - **The worker needs no API secrets.** It loads `loadWorkerEnv()` (`DATABASE_URL`, `WORKER_HEALTH_PORT`/`HOST`), not the API's schema, so `JWT_SECRET` never reaches that container.
+  - **The worker needs no API secrets.** It loads `loadWorkerEnv()` (`DATABASE_URL`, `WORKER_HEALTH_PORT`/`HOST`, `MAIL_*`), not the API's schema, so `JWT_SECRET` never reaches that container.
   - **`/health` is HTTP-level, not TCP.** It runs `SELECT 1` through pg-boss's own pool and answers 503 when that fails, which a port probe cannot see. Request logging is off on that server; the probe runs every 5 s.
   - **SIGTERM drains.** `close()` is `boss.stop({ graceful: true, timeout: 20s })` (the health server closes in a `finally`), and compose gives the service `stop_grace_period: 30s` so Docker does not SIGKILL mid-drain. Keep the second above the first. `runWorker()` subscribes to SIGTERM/SIGINT **before** boot, so a stop requested mid-start still drains and exits 0 rather than Node's default 143.
-  - **Handlers are injected** (`startWorker({ handlers })`), so tests can wrap the real handler and count invocations against a real Postgres.
-  - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: fromDrizzle(tx, sql) })` — pg-boss's own Drizzle adapter, which runs the insert on the transaction, so the job commits or rolls back with it (`tests/jobs/transaction-db.test.ts` proves both). The admin hard-cancel uses it, so a cancel without its notification job cannot exist.
+  - **Handlers are injected** (`startWorker({ handlers })` overrides individual defaults), so tests can wrap the real handler and count invocations against a real Postgres. The defaults come from `createDefaultHandlers({ db, mailer })`: the worker owns its own Drizzle pool (closed with pg-boss on shutdown) and the entrypoint owns the mailer (E4.3).
+  - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: fromDrizzle(tx, sql) })` — pg-boss's own Drizzle adapter, which runs the insert on the transaction, so the job commits or rolls back with it (`tests/jobs/transaction-db.test.ts` proves both). The admin hard-cancel uses it, so a cancel without its notification job cannot exist; booking uses it for the reminder job (E4.3).
+  - **Exactly-once mail = claim and send in one transaction (E4.3).** A handler inserts its `notification_log` row (`ON CONFLICT (dedupe_key) DO NOTHING`) and sends the mail inside one transaction. A failed send rolls the claim back so pg-boss retries; a concurrent duplicate blocks on the unique key, then finds it taken. The remaining window (SMTP accepted, commit fails) can duplicate one mail — preferred over ever losing one.
+  - **Reminders self-guard instead of being cancelled (E4.3).** A cancelled appointment's job still fires and sends nothing; the grouped admin mail is computed from the run as it stands at fire time. Known gaps, both from grouping at fire time: an appointment booked adjacent to a run _after_ that run's admin mail went out is never included in a grouped admin mail; and an appointment booked inside its own reminder window (no job) directly before an appointment whose job fires later makes that run send no admin mail at all, since the later one is not the run start. The second is at most one lead-hour wide; a reliable fix needs each appointment's reminder time stored, not the current `reminder_lead_hours`.
 
 ---
 
@@ -258,6 +263,7 @@ db/
 │   │   ├── sessions.ts       # login sessions (id, user_id, token_hash, expires_at, revoked_at) — backs refresh/logout
 │   │   ├── appointments.ts   # incl. unique + EXCLUDE (btree_gist) constraints
 │   │   ├── business-hours.ts # weekly windows: day_of_week + TIME open/close, per-row CHECKs
+│   │   ├── notification-log.ts # sent notifications; unique dedupe_key makes each one exactly-once
 │   │   └── index.ts          # re-exports all tables (what drizzle.config.ts reads)
 │   ├── client.ts             # creates the Drizzle client (node-postgres) from a connection string
 │   ├── migrate.ts            # migration runner: `db:migrate` CLI + runMigrations() for the test harness

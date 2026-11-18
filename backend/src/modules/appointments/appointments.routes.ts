@@ -49,7 +49,10 @@ export async function appointmentsRoutes(
     },
     async (request, reply) => {
       const { id: userId } = authenticatedUser(request);
-      const appointment = await bookAppointment(userId, request.body, dependencies);
+      const appointment = await bookAppointment(userId, request.body, {
+        ...dependencies,
+        jobs: app.jobs,
+      });
 
       return reply.status(201).send(appointment);
     },

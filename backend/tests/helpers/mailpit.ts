@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { inject, vi } from 'vitest';
 import { z } from 'zod';
 
+import { createMailer, type Mailer } from '../../src/lib/mailer.js';
+
 /**
  * Reads the run's shared Mailpit (ticket 4.2) through its HTTP API.
  *
@@ -35,6 +37,13 @@ export type MailpitMessage = z.infer<typeof messageSchema>;
 
 export function mailpitConfig(): { host: string; smtpPort: number; apiUrl: string } {
   return inject('mailpit');
+}
+
+/** A real SMTP mailer pointed at the run's Mailpit. The caller closes it. */
+export function createMailpitMailer(): Mailer {
+  const { host, smtpPort } = mailpitConfig();
+
+  return createMailer({ host, port: smtpPort, secure: false, from: 'no-reply@physiobook.local' });
 }
 
 export function uniqueRecipient(label: string): string {
