@@ -26,6 +26,13 @@ export function dayRange(from: string, days: number): SlotsQuery {
   return { from, to: addDays(from, days - 1) };
 }
 
+/** A YYYY-MM-DD date as "2 November". It names a calendar day, so no timezone moves it. */
+export function dayMonthLabel(date: string): string {
+  return new Intl.DateTimeFormat(LOCALE, { timeZone: 'UTC', day: 'numeric', month: 'long' }).format(
+    Date.parse(date),
+  );
+}
+
 export interface SlotDay {
   date: string;
   label: string;

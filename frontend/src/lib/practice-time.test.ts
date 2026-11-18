@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { addDays, calendarDate, dayRange, groupSlotsByDay } from './practice-time';
+import { addDays, calendarDate, dayMonthLabel, dayRange, groupSlotsByDay } from './practice-time';
 
 const slot = (start: string, end: string) => ({ start, end });
 
@@ -27,6 +27,13 @@ describe('dayRange', () => {
   it('Spans the given number of days, both ends inclusive', () => {
     expect(dayRange('2026-11-02', 7)).toEqual({ from: '2026-11-02', to: '2026-11-08' });
     expect(dayRange('2026-11-02', 1)).toEqual({ from: '2026-11-02', to: '2026-11-02' });
+  });
+});
+
+describe('dayMonthLabel', () => {
+  it('Names the calendar day it is given, whatever the browser timezone', () => {
+    expect(dayMonthLabel('2026-11-02')).toBe('2 November');
+    expect(dayMonthLabel('2026-12-31')).toBe('31 December');
   });
 });
 
