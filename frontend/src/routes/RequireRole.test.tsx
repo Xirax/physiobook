@@ -6,7 +6,7 @@ import { currentPath, logIn, renderAppAt, testAdmin, testUser } from '../../test
 
 describe('Guarding a route from a visitor with no session', () => {
   it('Sends them to the login page instead of the page they asked for', async () => {
-    renderAppAt('/appointments');
+    renderAppAt('/my-appointments');
 
     expect(await screen.findByRole('heading', { name: 'Log in' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your appointments' })).not.toBeInTheDocument();
@@ -25,7 +25,7 @@ describe('Guarding a route from a visitor with no session', () => {
       answer = resolve;
     });
 
-    renderAppAt('/appointments', {
+    renderAppAt('/my-appointments', {
       session: testUser,
       refresh: async () => {
         await held;
@@ -45,18 +45,18 @@ describe('Guarding a route from a visitor with no session', () => {
 
 describe('Returning to the intended destination', () => {
   it('Carries the visitor on to the exact page that turned them away', async () => {
-    renderAppAt('/appointments?tab=past', { signsInAs: testUser });
+    renderAppAt('/my-appointments?tab=past', { signsInAs: testUser });
 
     await screen.findByRole('heading', { name: 'Log in' });
     await logIn();
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
-    expect(currentPath()).toBe('/appointments?tab=past');
+    expect(currentPath()).toBe('/my-appointments?tab=past');
   });
 
   it('Keeps that destination when the visitor crosses to register first', async () => {
-    renderAppAt('/appointments?tab=past', { signsInAs: testUser });
+    renderAppAt('/my-appointments?tab=past', { signsInAs: testUser });
 
     await screen.findByRole('heading', { name: 'Log in' });
     await userEvent.click(screen.getByRole('link', { name: 'Create an account' }));
@@ -69,7 +69,7 @@ describe('Returning to the intended destination', () => {
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
-    expect(currentPath()).toBe('/appointments?tab=past');
+    expect(currentPath()).toBe('/my-appointments?tab=past');
   });
 
   it('Falls back to the role’s own area when nowhere was intended', async () => {
@@ -80,7 +80,7 @@ describe('Returning to the intended destination', () => {
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
-    expect(currentPath()).toBe('/appointments');
+    expect(currentPath()).toBe('/my-appointments');
   });
 
   it('Ignores a destination that would leave the app', async () => {
@@ -94,7 +94,7 @@ describe('Returning to the intended destination', () => {
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
-    expect(currentPath()).toBe('/appointments');
+    expect(currentPath()).toBe('/my-appointments');
   });
 
   it('Ignores a protocol-relative destination, which a lone leading slash would allow', async () => {
@@ -108,7 +108,7 @@ describe('Returning to the intended destination', () => {
 
     await screen.findByRole('heading', { name: 'Your appointments' });
 
-    expect(currentPath()).toBe('/appointments');
+    expect(currentPath()).toBe('/my-appointments');
   });
 });
 
@@ -121,7 +121,7 @@ describe('Guarding a route from the wrong role', () => {
   });
 
   it('Sends an admin who wanders into the user area back to the admin area', async () => {
-    renderAppAt('/appointments', { session: testAdmin });
+    renderAppAt('/my-appointments', { session: testAdmin });
 
     expect(await screen.findByRole('heading', { name: 'Practice admin' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Your appointments' })).not.toBeInTheDocument();

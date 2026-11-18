@@ -1,8 +1,9 @@
 import type { SlotsResponse } from '@physiobook/shared';
 import { useId } from 'react';
 
+import { groupSlotsByDay } from '../../lib/practice-time';
 import styles from './AvailabilityForm.module.scss';
-import { groupSlotsByDay, PREVIEW_DAYS } from './slot-preview';
+import { PREVIEW_DAYS } from './slot-preview';
 
 export type SlotPreviewState =
   | { status: 'pending' }

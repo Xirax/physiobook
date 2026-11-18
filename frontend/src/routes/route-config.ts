@@ -5,6 +5,7 @@ import type { NavItem } from '../components/NavBar';
 
 import { AdminAvailability } from './admin/AdminAvailability';
 import { AdminHome } from './admin/AdminHome';
+import { BookAppointment } from './BookAppointment';
 import { HomeRedirect } from './HomeRedirect';
 import { LoginRoute } from './LoginRoute';
 import { MyAppointments } from './MyAppointments';
@@ -24,11 +25,12 @@ export const routeConfig: readonly AppRoute[] = [
   { path: paths.login, Component: LoginRoute },
   { path: paths.register, Component: RegisterRoute },
   {
-    path: paths.appointments,
+    path: paths.myAppointments,
     Component: MyAppointments,
     requires: 'user',
     navLabel: 'Appointments',
   },
+  { path: paths.book, Component: BookAppointment, requires: 'user', navLabel: 'Book' },
   { path: paths.admin, Component: AdminHome, requires: 'admin', navLabel: 'Dashboard' },
   {
     path: paths.adminAvailability,

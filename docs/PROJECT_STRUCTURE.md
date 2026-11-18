@@ -68,18 +68,19 @@ frontend/
 │   ├── main.tsx              # app entry
 │   ├── App.tsx
 │   ├── routes/               # route-level views
-│   │   ├── booking/
-│   │   ├── my-appointments/  # user panel + nearest-appointment countdown
+│   │   ├── BookAppointment.tsx  # /book — patient slot picker + confirm + outcome (E3.5)
+│   │   ├── my-appointments/  # /my-appointments — user panel + nearest-appointment countdown
 │   │   └── admin/            # dashboard, availability, all appointments
 │   ├── components/           # reusable presentational components
 │   ├── features/             # feature-scoped logic (hooks, state, api calls)
 │   │   ├── auth/             # AuthProvider/useAuth, in-memory access token, silent refresh
 │   │   ├── availability/     # hours editor, settings form, slot preview + their TanStack Query hooks
-│   │   ├── booking/
+│   │   ├── booking/          # SlotPicker, ConfirmBookingDialog, optimistic useBookAppointment, week/horizon + error copy
 │   │   └── notifications/
 │   ├── lib/
 │   │   ├── api-client.ts     # typed fetch layer; attaches Bearer, single-flight 401→refresh→retry
 │   │   ├── query-client.ts   # TanStack Query defaults (no retry on a 4xx)
+│   │   ├── practice-time.ts  # practice-tz calendar dates, day/slot labels (en-GB, pinned)
 │   │   ├── useUnsavedChangesGuard.ts  # beforeunload prompt while a form is dirty
 │   │   └── auth.ts           # in-memory token + session rehydration on load
 │   ├── styles/               # global.scss + _tokens.scss; components use *.module.scss
@@ -100,6 +101,7 @@ frontend/
 - **The API is served from the SPA's own origin, so there is no CORS layer anywhere in this repo (E1.5).** The Vite dev server proxies the API paths in development and `docker/frontend/nginx.conf` does it for the production build; `plugins/cors.ts` in §4's tree was never written and, on this design, never needs to be. Three things follow, all of them load-bearing:
   - **The paths are proxied unrewritten** — `/auth` stays `/auth`, it does not become `/api/auth`. The refresh cookie is scoped `path=/auth` (§4), so the browser sends it back only to a URL that still begins with that. A prefix would put the cookie's path and the client's URL in two files that have to agree, and the failure mode when they stop agreeing is a cookie that is silently never sent — indistinguishable, from the frontend, from a user who is simply logged out.
   - **The path list lives twice, in `vite.config.ts` and `nginx.conf`, and must be changed together.** A feature prefix added to one and not the other is a 404 in exactly one environment. There is no third place to put it: one is a Node config, the other is nginx's own syntax.
+  - **No SPA route may begin with an API prefix (E3.5).** Vite matches its entries as prefixes, so a page under one would be proxied to the backend on reload. That is why the patient's panel is `/my-appointments`: `/appointments` is the API (`POST /appointments`, `DELETE /appointments/:id`, `GET /appointments/me`). It was missing from both lists until E3.5 — a booking would have died at the dev server, a gap only E7's Playwright can catch for good. The admin endpoints under `/admin/…` will need anchored entries for the same reason (flagged on 5.4).
   - **The api-client therefore uses relative URLs and no `credentials` mode**, and there is no `VITE_API_URL`. The browser never learns the backend's address, so nothing in the bundle has to be configured per environment. The dev server's upstream is `BACKEND_ORIGIN` — read by `vite.config.ts` in Node, deliberately without a `VITE_` prefix so it cannot reach the bundle.
   - **It also puts a reverse proxy in front of the rate limiter, which `TRUST_PROXY` has to be told about** in any deployment that routes real users this way — see §10 and the note in `.env.example`. The default stays `false`, correct for the directly-published dev stack, rather than being changed to suit an environment this repo does not yet have.
 - **Server state goes through TanStack Query (E2.4).** Feature hooks wrap `api-client` calls in queries and mutations; a mutation invalidates what it changed (a business-hours or settings save stales every cached `/slots` range) rather than editing the cache by hand. The whole cache is cleared when the session ends, so one sign-in never shows another's data.

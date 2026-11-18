@@ -1,14 +1,9 @@
+import { BOOKING_HORIZON_DAYS } from '@physiobook/shared';
 import type { BusinessHoursWindow } from '@physiobook/shared';
 import { DateTime } from 'luxon';
 import { describe, expect, it } from 'vitest';
 
-import {
-  BOOKING_HORIZON_DAYS,
-  bookingWindow,
-  generateSlots,
-  isSlotBookable,
-  type TimeRange,
-} from './slot-grid.js';
+import { bookingWindow, generateSlots, isSlotBookable, type TimeRange } from './slot-grid.js';
 
 const TIMEZONE = 'Europe/Warsaw';
 

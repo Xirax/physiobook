@@ -4,11 +4,12 @@ export const paths = {
   home: '/',
   login: '/login',
   register: '/register',
-  appointments: '/appointments',
+  myAppointments: '/my-appointments',
+  book: '/book',
   admin: '/admin',
   adminAvailability: '/admin/availability',
 } as const;
 
 export function homeFor(role: UserRole): string {
-  return role === 'admin' ? paths.admin : paths.appointments;
+  return role === 'admin' ? paths.admin : paths.myAppointments;
 }

@@ -99,7 +99,7 @@ describe('Reaching the availability screen', () => {
     renderAppAt('/admin/availability', { session: testUser, answer: practice() });
 
     expect(await screen.findByRole('heading', { name: 'Your appointments' })).toBeInTheDocument();
-    expect(currentPath()).toBe('/appointments');
+    expect(currentPath()).toBe('/my-appointments');
   });
 
   it('Says what it is loading until the hours and settings arrive', async () => {
