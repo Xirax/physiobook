@@ -1,19 +1,12 @@
-import {
-  appointments,
-  calendarBlocks,
-  notificationLog,
-  users,
-  type Database,
-} from '@physiobook/db';
+import { appointments, calendarBlocks, users, type Database } from '@physiobook/db';
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import type { WorkHandler } from 'pg-boss';
 import { z } from 'zod';
 
-import type { MailContent } from '../lib/mail-template.js';
-import type { Mailer } from '../lib/mailer.js';
 import { periodEnd, periodStart } from '../lib/period.js';
 import { getSettings } from '../modules/settings/settings.service.js';
 
+import { claimAndSend, type NotificationDependencies } from './notification.js';
 import {
   adminRunReminderMail,
   type ReminderAppointment,
@@ -26,42 +19,7 @@ export const sendReminderPayloadSchema = z.strictObject({
 
 export type SendReminderPayload = z.infer<typeof sendReminderPayloadSchema>;
 
-export interface ReminderDependencies {
-  db: Database;
-  mailer: Mailer;
-  now: () => Date;
-}
-
-interface Notification {
-  dedupeKey: string;
-  type: 'reminder_user' | 'reminder_admin_grouped';
-  recipientRole: 'user' | 'admin';
-  recipientUserId: string;
-  to: string;
-  content: MailContent;
-}
-
-/**
- * The claim and the send share a transaction: a failed send rolls the claim
- * back so pg-boss can retry, and a concurrent duplicate blocks on the unique
- * dedupe_key until this commits, then finds the key taken.
- */
-async function claimAndSend(
-  { to, content, ...entry }: Notification,
-  { db, mailer, now }: ReminderDependencies,
-): Promise<void> {
-  await db.transaction(async (tx) => {
-    const [claimed] = await tx
-      .insert(notificationLog)
-      .values({ ...entry, sentAt: now(), payload: { to, subject: content.subject } })
-      .onConflictDoNothing({ target: notificationLog.dedupeKey })
-      .returning({ id: notificationLog.id });
-
-    if (claimed === undefined) return;
-
-    await mailer.send({ to, ...content });
-  });
-}
+export type ReminderDependencies = NotificationDependencies;
 
 const activeAppointmentColumns = {
   userId: users.id,
