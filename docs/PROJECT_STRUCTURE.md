@@ -142,7 +142,9 @@ backend/
 │   │   │   ├── auth.logout.test.ts   # POST /auth/logout (incl. the instant-kill proof)
 │   │   │   └── auth.service.test.ts  # refreshSession / revokeSession, and register's DB failures
 │   │   ├── appointments/
-│   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user) · POST /admin/appointments/:id/cancel (admin)
+│   │   │   ├── appointments.routes.ts       # POST /appointments, DELETE /appointments/:id (user) · GET /admin/appointments, POST /admin/appointments/:id/cancel (admin)
+│   │   │   ├── admin-appointments.service.ts # admin list: appointments ⋈ blocks ⋈ users, practitioner-scoped; no range → start > now, range → practice-tz days; status filter; ordered by start
+│   │   │   ├── admin-appointments.service.test.ts # Testcontainers: across patients, upcoming boundary, status filters, tz day bounds, ordering, other practitioner
 │   │   │   ├── appointments.service.ts      # book: isSlotBookable → 422, then block (ON CONFLICT DO NOTHING) + appointment in one transaction; no row → 409 SLOT_TAKEN; send-reminder enqueued in the same transaction at start − reminder_lead_hours (skipped inside the window) · cancel: one conditional UPDATE, miss → 404/403/409/422 · admin hard-cancel: conditional UPDATE + send-cancellation enqueue in one transaction, miss → 404/409/422
 │   │   │   ├── appointments.service.test.ts # Testcontainers: taken / time-off / cancelled / other practitioner, 422 cases, rollback; cancel cutoff boundary, ownership, statuses, race
 │   │   │   ├── appointments.reminder.test.ts # Testcontainers + pg-boss: startAfter = start − lead, none inside the window, lead change does not reschedule, losing/failed booking leaves no job
@@ -150,7 +152,8 @@ backend/
 │   │   │   ├── appointment-status.test.ts   # contract status enum == db block_status (runtime + type level)
 │   │   │   ├── appointments.test.ts         # inject(): 201/409/422/400/401/403/429, spoofed user_id → 400, slot leaves GET /slots, reminder job queued
 │   │   │   ├── appointments.cancel.test.ts  # inject() DELETE: 200 (slot back in GET /slots, re-bookable)/422/403/404/409/400/401, admin → 403
-│   │   │   └── appointments.admin-cancel.test.ts # inject() admin cancel: 200 + job queued, slot back in GET /slots, 403/401/422/409/404/400
+│   │   │   ├── appointments.admin-cancel.test.ts # inject() admin cancel: 200 + job queued, slot back in GET /slots, 403/401/422/409/404/400
+│   │   │   └── appointments.admin-list.test.ts # inject() admin list: default upcoming active, range/status filters, ordering, 400 cases, 403/401
 │   │   ├── availability/     # admin business hours + time off
 │   │   │   ├── business-hours.routes.ts   # GET (any auth) / PUT (admin) /business-hours
 │   │   │   ├── business-hours.service.ts  # whole-week replace: lock → delete → insert, one transaction

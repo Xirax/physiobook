@@ -1,4 +1,6 @@
 import {
+  adminAppointmentsQuerySchema,
+  adminAppointmentsResponseSchema,
   appointmentParamsSchema,
   appointmentSchema,
   bookAppointmentRequestSchema,
@@ -10,6 +12,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { authenticatedUser } from '../../plugins/auth.js';
 import { rateLimitedPerUserRoute } from '../../plugins/rate-limit.js';
 
+import { listAdminAppointments } from './admin-appointments.service.js';
 import {
   adminCancelAppointment,
   bookAppointment,
@@ -79,6 +82,27 @@ export async function appointmentsRoutes(
       const { id: userId } = authenticatedUser(request);
 
       return cancelAppointment(userId, request.params.id, dependencies);
+    },
+  );
+
+  typed.get(
+    '/admin/appointments',
+    {
+      onRequest: app.requireRole('admin'),
+      schema: {
+        querystring: adminAppointmentsQuerySchema,
+        response: {
+          200: adminAppointmentsResponseSchema,
+          400: errorResponseSchema,
+          401: errorResponseSchema,
+          403: errorResponseSchema,
+        },
+      },
+    },
+    async (request) => {
+      const { id: practitionerId } = authenticatedUser(request);
+
+      return listAdminAppointments(practitionerId, request.query, dependencies);
     },
   );
 
