@@ -19,8 +19,6 @@ export const sendReminderPayloadSchema = z.strictObject({
 
 export type SendReminderPayload = z.infer<typeof sendReminderPayloadSchema>;
 
-export type ReminderDependencies = NotificationDependencies;
-
 const activeAppointmentColumns = {
   userId: users.id,
   email: users.email,
@@ -105,7 +103,7 @@ async function findEmail(db: Database, userId: string): Promise<string> {
 
 export async function sendReminders(
   appointmentId: string,
-  dependencies: ReminderDependencies,
+  dependencies: NotificationDependencies,
 ): Promise<void> {
   const { db } = dependencies;
   const appointment = await findActiveAppointment(db, withId(appointmentId));
@@ -144,7 +142,7 @@ export async function sendReminders(
 }
 
 export function createSendReminderHandler(
-  dependencies: ReminderDependencies,
+  dependencies: NotificationDependencies,
 ): WorkHandler<unknown> {
   return async (jobs) => {
     for (const job of jobs) {
