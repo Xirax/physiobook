@@ -187,6 +187,19 @@ describe('listAdminAppointments', () => {
     ]);
   });
 
+  it('Spans all 25 hours of a fall-back day', async () => {
+    // 2026-10-25 Warsaw: midnight is CEST (UTC+2), the next midnight CET (UTC+1).
+    await insertAppointment('2026-10-24T21:00:00.000Z');
+    await insertAppointment('2026-10-24T22:00:00.000Z');
+    await insertAppointment('2026-10-25T22:00:00.000Z');
+    await insertAppointment('2026-10-25T23:00:00.000Z');
+
+    expect(await startsOf({ from: '2026-10-25', to: '2026-10-25', status: 'active' })).toEqual([
+      '2026-10-24T22:00:00.000Z',
+      '2026-10-25T22:00:00.000Z',
+    ]);
+  });
+
   it('Combines a range with a status filter', async () => {
     await insertAppointment('2026-11-02T09:00:00.000Z', { status: 'cancelled' });
     await insertAppointment('2026-11-02T10:00:00.000Z');
