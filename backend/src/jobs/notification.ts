@@ -11,7 +11,7 @@ export interface NotificationDependencies {
 
 export interface Notification {
   dedupeKey: string;
-  type: 'reminder_user' | 'reminder_admin_grouped';
+  type: 'reminder_user' | 'reminder_admin_grouped' | 'cancellation_user';
   recipientRole: 'user' | 'admin';
   recipientUserId: string;
   to: string;

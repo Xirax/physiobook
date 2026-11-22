@@ -6,15 +6,16 @@ import type { Mailer } from '../lib/mailer.js';
 
 import { createBoss, type QueueName, startBoss } from './boss.js';
 import { noopHandler } from './noop.job.js';
-import { sendCancellationHandler } from './send-cancellation.job.js';
-import { createSendReminderHandler, type ReminderDependencies } from './send-reminder.job.js';
+import type { NotificationDependencies } from './notification.js';
+import { createSendCancellationHandler } from './send-cancellation.job.js';
+import { createSendReminderHandler } from './send-reminder.job.js';
 
 export type JobHandlers = Record<QueueName, WorkHandler<unknown>>;
 
-export function createDefaultHandlers(dependencies: ReminderDependencies): JobHandlers {
+export function createDefaultHandlers(dependencies: NotificationDependencies): JobHandlers {
   return {
     noop: noopHandler,
-    'send-cancellation': sendCancellationHandler,
+    'send-cancellation': createSendCancellationHandler(dependencies),
     'send-reminder': createSendReminderHandler(dependencies),
   };
 }

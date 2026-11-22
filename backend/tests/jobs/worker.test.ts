@@ -25,16 +25,49 @@ describe('worker', () => {
   let worker: Worker | undefined;
   let mailer: Mailer;
 
-  const launch = async (handler = vi.fn(noopHandler)): Promise<Worker> => {
+  const launch = async (
+    handler = vi.fn(noopHandler),
+    { mailer: workerMailer = mailer }: { mailer?: Mailer } = {},
+  ): Promise<Worker> => {
     worker = await startWorker({
       connectionString: database.connectionString,
       health: { port: 0, host: '127.0.0.1' },
-      mailer,
+      mailer: workerMailer,
       handlers: { noop: handler },
       logger: false,
     });
 
     return worker;
+  };
+
+  const insertAppointment = async (
+    label: string,
+    status: 'active' | 'cancelled_by_admin' = 'active',
+  ) => {
+    const email = uniqueRecipient(label);
+    const [patient] = await database.db
+      .insert(users)
+      .values({ email, passwordHash: 'x', fullName: 'Worker Patient' })
+      .returning({ id: users.id });
+    const [admin] = await database.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'admin'));
+    const [block] = await database.db
+      .insert(calendarBlocks)
+      .values({
+        practitionerId: admin!.id,
+        kind: 'appointment',
+        status,
+        period: tstzrangeOf({ start: '2026-11-19T09:00:00Z', end: '2026-11-19T10:00:00Z' }),
+      })
+      .returning({ id: calendarBlocks.id });
+    const [appointment] = await database.db
+      .insert(appointments)
+      .values({ blockId: block!.id, userId: patient!.id })
+      .returning({ id: appointments.id });
+
+    return { id: appointment!.id, email };
   };
 
   const jobState = async (id: string): Promise<string | undefined> => {
@@ -89,32 +122,42 @@ describe('worker', () => {
 
   it('sends the reminder mail for a send-reminder job with its default handler', async () => {
     await launch();
-    const email = uniqueRecipient('worker-reminder');
-    const [patient] = await database.db
-      .insert(users)
-      .values({ email, passwordHash: 'x', fullName: 'Worker Patient' })
-      .returning({ id: users.id });
-    const [admin] = await database.db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.role, 'admin'));
-    const [block] = await database.db
-      .insert(calendarBlocks)
-      .values({
-        practitionerId: admin!.id,
-        kind: 'appointment',
-        period: tstzrangeOf({ start: '2026-11-19T09:00:00Z', end: '2026-11-19T10:00:00Z' }),
-      })
-      .returning({ id: calendarBlocks.id });
-    const [appointment] = await database.db
-      .insert(appointments)
-      .values({ blockId: block!.id, userId: patient!.id })
-      .returning({ id: appointments.id });
+    const appointment = await insertAppointment('worker-reminder');
 
-    await createJobQueue(api).send(QUEUES.sendReminder, { appointmentId: appointment!.id });
+    await createJobQueue(api).send(QUEUES.sendReminder, { appointmentId: appointment.id });
 
-    const mail = await waitForMessage(email, { timeout: 15_000 });
+    const mail = await waitForMessage(appointment.email, { timeout: 15_000 });
     expect(mail.Subject).toContain('Reminder: your appointment');
+  });
+
+  it('sends the cancellation mail for a send-cancellation job with its default handler', async () => {
+    await launch();
+    const appointment = await insertAppointment('worker-cancellation', 'cancelled_by_admin');
+
+    await createJobQueue(api).send(QUEUES.sendCancellation, { appointmentId: appointment.id });
+
+    const mail = await waitForMessage(appointment.email, { timeout: 15_000 });
+    expect(mail.Subject).toContain('Cancelled: your appointment');
+  });
+
+  it('retries a send-cancellation job whose send failed and mails the patient once', async () => {
+    const send = vi
+      .fn<Mailer['send']>()
+      .mockRejectedValueOnce(new Error('SMTP down'))
+      .mockImplementation((message) => mailer.send(message));
+    await launch(undefined, { mailer: { send, close: () => {} } });
+    const appointment = await insertAppointment('worker-retry', 'cancelled_by_admin');
+
+    const id = await createJobQueue(api).send(QUEUES.sendCancellation, {
+      appointmentId: appointment.id,
+    });
+
+    await vi.waitFor(async () => {
+      const [job] = await api.findJobs(QUEUES.sendCancellation, { id: id ?? '' });
+      expect(job).toMatchObject({ state: 'completed', retryCount: 1 });
+    }, JOB_SETTLED_TIMEOUT);
+    await waitForMessage(appointment.email);
+    expect(send).toHaveBeenCalledTimes(2);
   });
 
   it('reports healthy on /health over HTTP while connected', async () => {
