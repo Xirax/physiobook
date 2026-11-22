@@ -183,17 +183,17 @@ The patient side of an `appointment`-kind block. One-to-one with its block.
 
 ### 2.7 `notification_log`
 
-Audit + idempotency for the 24h reminders (so a job retry can't double-send).
+Audit + idempotency for notification mail — the 24h reminders and the admin-cancel mail (so a job retry can't double-send).
 
-| Column              | Type             | Notes                                                                                         |
-| ------------------- | ---------------- | --------------------------------------------------------------------------------------------- |
-| `id`                | `uuid` PK        |                                                                                               |
-| `recipient_role`    | `user_role` enum | `'user'` or `'admin'`                                                                         |
-| `recipient_user_id` | `uuid`           | FK → `users.id`, nullable (admin grouped mail may be practice-wide)                           |
-| `type`              | `text`           | `'reminder_user'`, `'reminder_admin_grouped'` (E4.3); 4.4 adds its own                        |
-| `dedupe_key`        | `text`           | **unique**; `reminder:user:{appointmentId}`, `reminder:admin-run:{practitionerId}:{runStart}` |
-| `sent_at`           | `timestamptz`    | set from the app's injected clock; `default now()` is only a fallback                         |
-| `payload`           | `jsonb`          | what was sent: `{ to, subject }`                                                              |
+| Column              | Type             | Notes                                                                                                                         |
+| ------------------- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `id`                | `uuid` PK        |                                                                                                                               |
+| `recipient_role`    | `user_role` enum | `'user'` or `'admin'`                                                                                                         |
+| `recipient_user_id` | `uuid`           | FK → `users.id`, nullable (admin grouped mail may be practice-wide)                                                           |
+| `type`              | `text`           | `'reminder_user'`, `'reminder_admin_grouped'` (E4.3), `'cancellation_user'` (E4.4)                                            |
+| `dedupe_key`        | `text`           | **unique**; `reminder:user:{appointmentId}`, `reminder:admin-run:{practitionerId}:{runStart}`, `cancellation:{appointmentId}` |
+| `sent_at`           | `timestamptz`    | set from the app's injected clock; `default now()` is only a fallback                                                         |
+| `payload`           | `jsonb`          | what was sent: `{ to, subject }`                                                                                              |
 
 - The `dedupe_key` unique constraint (`notification_log_dedupe_key_unique`) is what makes reminders exactly-once even if pg-boss retries: the job inserts the row (`ON CONFLICT DO NOTHING`) and sends the mail in one transaction, so a failed send releases the key for the retry.
 - `{runStart}` is the UTC ISO instant of the first active appointment of a back-to-back run; the practitioner gets one grouped mail per run. The key carries `{practitionerId}` so two practitioners' runs starting at the same instant never share a key (§8).
