@@ -178,7 +178,10 @@ backend/
 │   │   ├── boss.ts           # shared pg-boss config: queue names, createBoss/startBoss, JobQueue
 │   │   ├── worker.ts         # startWorker(): own db pool, createDefaultHandlers({ db, mailer }) + tiny /health; runWorker(): signal → drain → exit code
 │   │   ├── noop.job.ts       # 4.1's no-op handler, proves enqueue → consume
-│   │   ├── send-cancellation.job.ts # payload schema { appointmentId } + placeholder handler (4.4 sends the mail)
+│   │   ├── notification.ts   # claimAndSend(): notification_log claim + mail send in one transaction (shared by every mail job)
+│   │   ├── mail-format.ts    # practice-timezone date/time formatting for mail templates
+│   │   ├── send-cancellation.job.ts # admin hard-cancel mail: guards on cancelled_by_admin, claims cancellation:{apptId}, sends; a failed send throws so pg-boss retries
+│   │   ├── cancellation-mail.ts # patient cancellation template ("the clinic has cancelled…"), rendered in the practice timezone
 │   │   ├── send-reminder.job.ts # 24h reminder: self-guard, user mail, grouped admin mail for the run start; claim + send in one transaction
 │   │   └── reminder-mail.ts  # user + grouped-admin reminder templates, rendered in the practice timezone
 │   └── lib/
@@ -201,8 +204,10 @@ backend/
 │   │   └── business-hours.test.ts       # day_of_week range + closes_after_opens CHECKs
 │   ├── jobs/
 │   │   ├── boss.test.ts                 # schema created on start, queues, API + worker co-start
-│   │   ├── worker.test.ts               # exactly-once no-op, default send-reminder handler mails, /health, graceful drain
+│   │   ├── worker.test.ts               # exactly-once no-op, default send-reminder + send-cancellation handlers mail, failed send retried once, /health, graceful drain
 │   │   ├── send-reminder.test.ts        # Testcontainers + Mailpit: user/admin mails, grouping, cancellations, retries, concurrency
+│   │   ├── send-cancellation.test.ts    # Testcontainers + Mailpit: admin-cancelled → one mail + log row; rerun / concurrent / failed send; active, user-cancelled, unknown → nothing
+│   │   ├── cancellation-flow.test.ts    # API + worker: book → admin cancel → one cancellation mail; the released reminder sends nothing
 │   │   ├── transaction-db.test.ts       # a job sent through a Drizzle tx commits / rolls back with it
 │   │   └── api-enqueue.test.ts          # app.jobs.send → worker consumes it exactly once
 │   ├── mail/
@@ -252,6 +257,7 @@ backend/
   - **Handlers are injected** (`startWorker({ handlers })` overrides individual defaults), so tests can wrap the real handler and count invocations against a real Postgres. The defaults come from `createDefaultHandlers({ db, mailer })`: the worker owns its own Drizzle pool (closed with pg-boss on shutdown) and the entrypoint owns the mailer (E4.3).
   - **Enqueue with the change that causes it (E5.2).** A job that must exist exactly when a write commits is sent with `send(name, data, { db: fromDrizzle(tx, sql) })` — pg-boss's own Drizzle adapter, which runs the insert on the transaction, so the job commits or rolls back with it (`tests/jobs/transaction-db.test.ts` proves both). The admin hard-cancel uses it, so a cancel without its notification job cannot exist; booking uses it for the reminder job (E4.3).
   - **Exactly-once mail = claim and send in one transaction (E4.3).** A handler inserts its `notification_log` row (`ON CONFLICT (dedupe_key) DO NOTHING`) and sends the mail inside one transaction. A failed send rolls the claim back so pg-boss retries; a concurrent duplicate blocks on the unique key, then finds it taken. The remaining window (SMTP accepted, commit fails) can duplicate one mail — preferred over ever losing one.
+  - **Cancellation mail guards on `cancelled_by_admin` (E4.4).** Only the admin hard-cancel enqueues `send-cancellation`, and the handler also checks the block's status, so a user self-cancel never mails even if a job were queued for it. The mail is deduped on `cancellation:{appointmentId}`.
   - **Reminders self-guard instead of being cancelled (E4.3).** A cancelled appointment's job still fires and sends nothing; the grouped admin mail is computed from the run as it stands at fire time. Known gaps, both from grouping at fire time: an appointment booked adjacent to a run _after_ that run's admin mail went out is never included in a grouped admin mail; and an appointment booked inside its own reminder window (no job) directly before an appointment whose job fires later makes that run send no admin mail at all, since the later one is not the run start. The second is at most one lead-hour wide; a reliable fix needs each appointment's reminder time stored, not the current `reminder_lead_hours`.
 
 ---

@@ -1,6 +1,6 @@
-import { DateTime } from 'luxon';
-
 import { defineTemplate } from '../lib/mail-template.js';
+
+import { longDate, time, timeRange } from './mail-format.js';
 
 export interface ReminderAppointment {
   start: Date;
@@ -18,18 +18,6 @@ export interface AdminRunReminderData {
   /** The run's active appointments, earliest first; never empty. */
   appointments: [ReminderAppointment, ...ReminderAppointment[]];
 }
-
-function local(instant: Date, timezone: string): DateTime {
-  return DateTime.fromJSDate(instant, { zone: timezone }).setLocale('en-GB');
-}
-
-const longDate = (instant: Date, timezone: string) =>
-  local(instant, timezone).toFormat('cccc d LLLL yyyy');
-
-const time = (instant: Date, timezone: string) => local(instant, timezone).toFormat('HH:mm');
-
-const timeRange = ({ start, end }: ReminderAppointment, timezone: string) =>
-  `${time(start, timezone)}–${time(end, timezone)}`;
 
 export const userReminderMail = defineTemplate(({ timezone, appointment }: UserReminderData) => {
   const date = longDate(appointment.start, timezone);
